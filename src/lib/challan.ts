@@ -1,12 +1,6 @@
-import {
-  ChallanStatus,
-  ChallanType,
-  PowderCoatingColor,
-  Prisma,
-  TransactionType,
-} from "@prisma/client";
-import { prisma } from "./prisma";
-import { createLedgerEntry, logActivity, checkLowStock } from "./stock";
+import { mutate, read } from "./store";
+import type { ChallanType } from "./types";
+import { enrichChallan, getProfileById } from "./data-access";
 
 const PREFIX: Record<ChallanType, string> = {
   OUTWARD: "OUT",
@@ -17,9 +11,9 @@ const PREFIX: Record<ChallanType, string> = {
 export async function generateChallanNumber(type: ChallanType) {
   const year = new Date().getFullYear();
   const prefix = `MAGS/${PREFIX[type]}/${year}/`;
-  const count = await prisma.challan.count({
-    where: { challanNumber: { startsWith: prefix } },
-  });
+  const count = read((d) =>
+    d.challans.filter((c) => c.challanNumber.startsWith(prefix)).length
+  );
   return `${prefix}${String(count + 1).padStart(4, "0")}`;
 }
 
@@ -31,27 +25,42 @@ export type ChallanItemInput = {
   remarks?: string;
 };
 
-export async function processChallanOutwardIssue(
-  challanId: string,
-  userId: string
+function pushLedgerEntry(
+  d: import("./types").Database,
+  profileId: string,
+  transactionType: "CHALLAN_OUTWARD" | "CHALLAN_RETURN",
+  quantity: number,
+  balance: number,
+  userId: string,
+  remarks?: string
 ) {
-  return prisma.$transaction(async (tx) => {
-    const challan = await tx.challan.findUniqueOrThrow({
-      where: { id: challanId },
-      include: { items: { include: { profile: true } } },
-    });
+  d.stockLedgers.push({
+    id: `sl_${Date.now()}_${profileId}`,
+    profileId,
+    transactionType,
+    quantity,
+    balance,
+    userId,
+    remarks,
+    date: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  });
+}
 
-    if (challan.type !== ChallanType.OUTWARD) {
+export async function processChallanOutwardIssue(challanId: string, userId: string) {
+  return mutate((d) => {
+    const challan = d.challans.find((c) => c.id === challanId);
+    if (!challan) throw new Error("Challan not found");
+    if (challan.type !== "OUTWARD") {
       throw new Error("Invalid challan type for outward issue");
     }
-    if (challan.status !== ChallanStatus.DRAFT) {
+    if (challan.status !== "DRAFT") {
       throw new Error("Challan already issued");
     }
 
-    for (const item of challan.items) {
-      const profile = await tx.profile.findUniqueOrThrow({
-        where: { id: item.profileId },
-      });
+    const items = d.challanItems.filter((i) => i.challanId === challanId);
+    for (const item of items) {
+      const profile = getProfileById(d, item.profileId)!;
       if (profile.currentStock < item.weight) {
         throw new Error(
           `Insufficient stock for ${profile.profileCode} (need ${item.weight} KG)`
@@ -59,86 +68,74 @@ export async function processChallanOutwardIssue(
       }
     }
 
-    for (const item of challan.items) {
-      const profile = await tx.profile.update({
-        where: { id: item.profileId },
-        data: { currentStock: { decrement: item.weight } },
-      });
-      await createLedgerEntry(tx, {
-        profileId: item.profileId,
-        transactionType: TransactionType.CHALLAN_OUTWARD,
-        quantity: -item.weight,
-        balance: profile.currentStock,
-        userId,
-        remarks: `Outward Challan ${challan.challanNumber}`,
-      });
-      await checkLowStock(
-        tx,
+    for (const item of items) {
+      const profile = getProfileById(d, item.profileId)!;
+      profile.currentStock -= item.weight;
+      profile.updatedAt = new Date().toISOString();
+      pushLedgerEntry(
+        d,
         item.profileId,
-        item.profile.profileCode,
+        "CHALLAN_OUTWARD",
+        -item.weight,
         profile.currentStock,
-        profile.lowStockThreshold
+        userId,
+        `Outward Challan ${challan.challanNumber}`
       );
+      if (profile.currentStock <= profile.lowStockThreshold) {
+        const admins = d.users.filter(
+          (u) => u.role === "ADMINISTRATOR" && u.status === "ACTIVE"
+        );
+        admins.forEach((u) => {
+          d.notifications.unshift({
+            id: `n_${Date.now()}_${u.id}`,
+            userId: u.id,
+            title: "Low Stock Alert",
+            message: `Profile ${profile.profileCode} is low on stock (${profile.currentStock.toFixed(2)} KG remaining).`,
+            read: false,
+            type: "warning",
+            createdAt: new Date().toISOString(),
+          });
+        });
+      }
     }
 
-    return tx.challan.update({
-      where: { id: challanId },
-      data: { status: ChallanStatus.ISSUED },
-      include: {
-        items: { include: { profile: true } },
-        vendor: true,
-        project: true,
-        parentChallan: true,
-      },
-    });
+    challan.status = "ISSUED";
+    challan.updatedAt = new Date().toISOString();
+    return enrichChallan(d, challan);
   });
 }
 
-export async function processChallanReturnComplete(
-  challanId: string,
-  userId: string
-) {
-  return prisma.$transaction(async (tx) => {
-    const challan = await tx.challan.findUniqueOrThrow({
-      where: { id: challanId },
-      include: { items: { include: { profile: true } } },
-    });
-
-    if (challan.type !== ChallanType.RETURN) {
+export async function processChallanReturnComplete(challanId: string, userId: string) {
+  return mutate((d) => {
+    const challan = d.challans.find((c) => c.id === challanId);
+    if (!challan) throw new Error("Challan not found");
+    if (challan.type !== "RETURN") {
       throw new Error("Invalid challan type for return");
     }
-    if (challan.status === ChallanStatus.COMPLETED) {
+    if (challan.status === "COMPLETED") {
       throw new Error("Return challan already completed");
     }
 
-    for (const item of challan.items) {
-      const profile = await tx.profile.update({
-        where: { id: item.profileId },
-        data: { powderCoatedStock: { increment: item.weight } },
-      });
-      await createLedgerEntry(tx, {
-        profileId: item.profileId,
-        transactionType: TransactionType.CHALLAN_RETURN,
-        quantity: item.weight,
-        balance: profile.powderCoatedStock,
+    const items = d.challanItems.filter((i) => i.challanId === challanId);
+    for (const item of items) {
+      const profile = getProfileById(d, item.profileId)!;
+      profile.powderCoatedStock += item.weight;
+      profile.updatedAt = new Date().toISOString();
+      pushLedgerEntry(
+        d,
+        item.profileId,
+        "CHALLAN_RETURN",
+        item.weight,
+        profile.powderCoatedStock,
         userId,
-        remarks: `Return Challan ${challan.challanNumber}`,
-      });
+        `Return Challan ${challan.challanNumber}`
+      );
     }
 
-    return tx.challan.update({
-      where: { id: challanId },
-      data: {
-        status: ChallanStatus.COMPLETED,
-        receivedDate: new Date(),
-      },
-      include: {
-        items: { include: { profile: true } },
-        vendor: true,
-        project: true,
-        parentChallan: true,
-      },
-    });
+    challan.status = "COMPLETED";
+    challan.receivedDate = new Date().toISOString();
+    challan.updatedAt = new Date().toISOString();
+    return enrichChallan(d, challan);
   });
 }
 
@@ -148,34 +145,21 @@ export async function logChallanActivity(
   challanId: string,
   details: string
 ) {
-  await prisma.activityLog.create({
-    data: {
+  mutate((d) => {
+    d.activityLogs.unshift({
+      id: `al_${Date.now()}`,
       userId,
       action,
       entity: "Challan",
       entityId: challanId,
       details,
-    },
+      createdAt: new Date().toISOString(),
+    });
   });
 }
 
-export const CHALLAN_TYPE_LABELS: Record<ChallanType, string> = {
-  OUTWARD: "Outward Challan",
-  POWDER_COATING: "Powder Coating Challan",
-  RETURN: "Return Challan",
-};
-
-export const CHALLAN_STATUS_LABELS: Record<ChallanStatus, string> = {
-  DRAFT: "Draft",
-  ISSUED: "Issued",
-  SENT_FOR_COATING: "Sent for Coating",
-  IN_PROCESS: "In Process",
-  RETURNED: "Returned",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
-
-export function colorLabel(color: PowderCoatingColor | null | undefined) {
-  if (!color) return "—";
-  return color.replace(/_/g, " ");
-}
+export {
+  CHALLAN_TYPE_LABELS,
+  CHALLAN_STATUS_LABELS,
+  colorLabel,
+} from "./challan-labels";

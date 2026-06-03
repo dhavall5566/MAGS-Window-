@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
-import { generateChallanNumber } from "@/lib/challan";
-import { ChallanType, ChallanStatus } from "@prisma/client";
-
+import { generateChallanNumber, processChallanOutwardIssue } from "@/lib/challan";
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,20 +10,13 @@ export async function GET(
   if (error) return error;
 
   const { id } = await params;
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: {
-      profiles: { include: { profile: true } },
-      challans: { include: { vendor: true, items: true } },
-    },
-  });
+  const project = db.getProject(id);
   if (!project) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   return NextResponse.json(project);
 }
 
-/** Auto-generate outward challans from project profiles */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -36,20 +27,18 @@ export async function POST(
   const { id } = await params;
   const { vendorId, issueNow } = await req.json();
 
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: { profiles: { include: { profile: true } } },
-  });
+  const project = db.getProject(id);
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
-  if (project.profiles.length === 0) {
+  if (!project.profiles?.length) {
     return NextResponse.json({ error: "No profiles attached" }, { status: 400 });
   }
 
   const items = project.profiles.map((pp) => {
-    const length = pp.plannedLength ?? pp.profile.standardLength;
-    const weight = length * pp.plannedQty * pp.profile.weightPerMeter;
+    const profile = pp.profile;
+    const length = pp.plannedLength ?? profile.standardLength;
+    const weight = length * pp.plannedQty * profile.weightPerMeter;
     return {
       profileId: pp.profileId,
       quantity: pp.plannedQty,
@@ -60,29 +49,24 @@ export async function POST(
 
   const totalWeight = items.reduce((s, i) => s + i.weight, 0);
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
-  const challanNumber = await generateChallanNumber(ChallanType.OUTWARD);
+  const challanNumber = await generateChallanNumber("OUTWARD");
 
-  const challan = await prisma.challan.create({
-    data: {
+  const challan = db.createChallan(
+    {
       challanNumber,
-      type: ChallanType.OUTWARD,
-      status: ChallanStatus.DRAFT,
+      type: "OUTWARD",
+      status: "DRAFT",
       vendorId: vendorId || undefined,
       projectId: id,
       totalWeight,
       totalQty,
       preparedBy: user.name,
-      items: { create: items },
+      issueDate: new Date().toISOString(),
     },
-    include: {
-      items: { include: { profile: true } },
-      vendor: true,
-      project: true,
-    },
-  });
+    items
+  );
 
   if (issueNow) {
-    const { processChallanOutwardIssue } = await import("@/lib/challan");
     try {
       const issued = await processChallanOutwardIssue(challan.id, user.id);
       return NextResponse.json(issued, { status: 201 });

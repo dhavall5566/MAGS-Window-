@@ -1,29 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db, getProfileById } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { consumptionSchema } from "@/lib/validations";
 import { processConsumption } from "@/lib/stock";
 import { calculateWeight } from "@/lib/utils";
+import { read } from "@/lib/store";
 
 export async function GET() {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const entries = await prisma.consumption.findMany({
-    orderBy: { date: "desc" },
-    include: {
-      profile: {
-        select: {
-          profileCode: true,
-          profileName: true,
-          imageUrl: true,
-          weightPerMeter: true,
-        },
-      },
-    },
-  });
-
-  return NextResponse.json(entries);
+  return NextResponse.json(db.getConsumptions());
 }
 
 export async function POST(req: NextRequest) {
@@ -36,9 +23,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const profile = await prisma.profile.findUniqueOrThrow({
-    where: { id: parsed.data.profileId },
-  });
+  const profile = read((d) => getProfileById(d, parsed.data.profileId));
+  if (!profile) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  }
 
   const calculatedWeight = calculateWeight(
     parsed.data.quantity,
@@ -63,16 +51,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const entry = await prisma.consumption.create({
-    data: {
-      profileId: parsed.data.profileId,
-      quantity: parsed.data.quantity,
-      unit: parsed.data.unit,
-      calculatedWeight,
-      date,
-      remarks: parsed.data.remarks,
-    },
-    include: { profile: true },
+  const entry = db.createConsumption({
+    profileId: parsed.data.profileId,
+    quantity: parsed.data.quantity,
+    unit: parsed.data.unit,
+    calculatedWeight,
+    date: date.toISOString(),
+    remarks: parsed.data.remarks,
   });
 
   return NextResponse.json(entry, { status: 201 });

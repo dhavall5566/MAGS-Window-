@@ -1,37 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { powderCoatingSchema } from "@/lib/validations";
 import { processPowderTransfer, completePowderCoating } from "@/lib/stock";
-import { PowderCoatingStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const color = req.nextUrl.searchParams.get("color");
-  const status = req.nextUrl.searchParams.get("status");
+  const color = req.nextUrl.searchParams.get("color") ?? undefined;
+  const status = req.nextUrl.searchParams.get("status") ?? undefined;
 
-  const entries = await prisma.powderCoating.findMany({
-    where: {
-      ...(color ? { color: color as never } : {}),
-      ...(status ? { status: status as PowderCoatingStatus } : {}),
-    },
-    orderBy: { transferDate: "desc" },
-    include: {
-      profile: {
-        select: {
-          profileCode: true,
-          profileName: true,
-          imageUrl: true,
-          currentStock: true,
-          powderCoatedStock: true,
-        },
-      },
-    },
-  });
-
-  return NextResponse.json(entries);
+  return NextResponse.json(db.getPowderCoatings({ color, status }));
 }
 
 export async function POST(req: NextRequest) {
@@ -45,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    if (parsed.data.status !== PowderCoatingStatus.PENDING) {
+    if (parsed.data.status !== "PENDING") {
       await processPowderTransfer(
         parsed.data.profileId,
         parsed.data.weight,
@@ -60,19 +40,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const entry = await prisma.powderCoating.create({
-    data: {
-      profileId: parsed.data.profileId,
-      quantity: parsed.data.quantity,
-      weight: parsed.data.weight,
-      color: parsed.data.color,
-      transferDate: parsed.data.transferDate
-        ? new Date(parsed.data.transferDate)
-        : new Date(),
-      status: parsed.data.status,
-      remarks: parsed.data.remarks,
-    },
-    include: { profile: true },
+  const entry = db.createPowderCoating({
+    profileId: parsed.data.profileId,
+    quantity: parsed.data.quantity,
+    weight: parsed.data.weight,
+    color: parsed.data.color,
+    transferDate: parsed.data.transferDate
+      ? new Date(parsed.data.transferDate).toISOString()
+      : new Date().toISOString(),
+    status: parsed.data.status,
+    remarks: parsed.data.remarks,
   });
 
   return NextResponse.json(entry, { status: 201 });
@@ -87,7 +64,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "id and status required" }, { status: 400 });
   }
 
-  if (status === PowderCoatingStatus.COMPLETED) {
+  if (status === "COMPLETED") {
     try {
       await completePowderCoating(id, user.id);
     } catch (e) {
@@ -98,11 +75,6 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  const entry = await prisma.powderCoating.update({
-    where: { id },
-    data: { status },
-    include: { profile: true },
-  });
-
+  const entry = db.updatePowderCoating(id, { status });
   return NextResponse.json(entry);
 }

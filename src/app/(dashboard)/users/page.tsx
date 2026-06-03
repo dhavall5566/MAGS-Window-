@@ -37,7 +37,7 @@ import { roleLabels } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Plus, Loader2, UserCog } from "lucide-react";
-import { UserRole } from "@prisma/client";
+import type { UserRole } from "@/lib/types";
 
 type FormData = z.infer<typeof userSchema>;
 

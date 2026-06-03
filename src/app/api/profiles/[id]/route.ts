@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { profileSchema } from "@/lib/validations";
 
@@ -11,15 +11,7 @@ export async function GET(
   if (error) return error;
 
   const { id } = await params;
-  const profile = await prisma.profile.findUnique({
-    where: { id },
-    include: {
-      stockInwards: { take: 10, orderBy: { date: "desc" } },
-      consumptions: { take: 10, orderBy: { date: "desc" } },
-      powderCoatings: { take: 10, orderBy: { transferDate: "desc" } },
-      stockLedgers: { take: 15, orderBy: { date: "desc" }, include: { user: { select: { name: true } } } },
-    },
-  });
+  const profile = db.getProfile(id);
 
   if (!profile) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -42,24 +34,24 @@ export async function PUT(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const profile = await prisma.profile.update({
-    where: { id },
-    data: parsed.data,
-  });
-
-  if (user) {
-    await prisma.activityLog.create({
-      data: {
+  try {
+    const profile = db.updateProfile(id, parsed.data);
+    if (user) {
+      db.createActivityLog({
         userId: user.id,
         action: "UPDATE",
         entity: "Profile",
         entityId: profile.id,
         details: `Updated profile ${profile.profileCode}`,
-      },
-    });
+      });
+    }
+    return NextResponse.json(profile);
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed" },
+      { status: 404 }
+    );
   }
-
-  return NextResponse.json(profile);
 }
 
 export async function DELETE(
@@ -70,20 +62,15 @@ export async function DELETE(
   if (error) return error;
 
   const { id } = await params;
-  const profile = await prisma.profile.update({
-    where: { id },
-    data: { status: "INACTIVE" },
-  });
+  const profile = db.updateProfile(id, { status: "INACTIVE" });
 
   if (user) {
-    await prisma.activityLog.create({
-      data: {
-        userId: user.id,
-        action: "DELETE",
-        entity: "Profile",
-        entityId: profile.id,
-        details: `Deactivated profile ${profile.profileCode}`,
-      },
+    db.createActivityLog({
+      userId: user.id,
+      action: "DELETE",
+      entity: "Profile",
+      entityId: profile.id,
+      details: `Deactivated profile ${profile.profileCode}`,
     });
   }
 

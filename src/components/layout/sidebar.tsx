@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UserRole } from "@prisma/client";
+import type { UserRole } from "@/lib/types";
 import { getNavItems } from "@/lib/permissions";
 import { MagsLogo } from "@/components/brand/mags-logo";
 import { companyInfo } from "@/lib/company";

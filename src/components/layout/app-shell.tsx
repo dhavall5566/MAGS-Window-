@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
-import { UserRole } from "@prisma/client";
+import type { UserRole } from "@/lib/types";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -11,7 +11,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar
-        role={UserRole.ADMINISTRATOR}
+        role={"ADMINISTRATOR" satisfies UserRole}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />

@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import {
   processChallanOutwardIssue,
   processChallanReturnComplete,
   logChallanActivity,
 } from "@/lib/challan";
-import { ChallanStatus } from "@prisma/client";
-
-const includeChallan = {
-  items: { include: { profile: true } },
-  vendor: true,
-  project: true,
-  parentChallan: {
-    include: { items: { include: { profile: true } }, vendor: true },
-  },
-  childChallans: {
-    include: { vendor: true },
-  },
-};
+import type { ChallanStatus } from "@/lib/types";
 
 export async function GET(
   _req: NextRequest,
@@ -28,10 +16,7 @@ export async function GET(
   if (error) return error;
 
   const { id } = await params;
-  const challan = await prisma.challan.findUnique({
-    where: { id },
-    include: includeChallan,
-  });
+  const challan = db.getChallan(id);
   if (!challan) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -67,13 +52,9 @@ export async function PATCH(
     );
   }
 
-  const challan = await prisma.challan.update({
-    where: { id },
-    data: {
-      ...(status ? { status: status as ChallanStatus } : {}),
-      ...updates,
-    },
-    include: includeChallan,
+  const challan = db.updateChallan(id, {
+    ...(status ? { status: status as ChallanStatus } : {}),
+    ...updates,
   });
 
   return NextResponse.json(challan);

@@ -1,21 +1,11 @@
 import { companyInfo } from "@/lib/company";
-import { CHALLAN_STATUS_LABELS, CHALLAN_TYPE_LABELS, colorLabel } from "@/lib/challan";
+import { CHALLAN_STATUS_LABELS, CHALLAN_TYPE_LABELS, colorLabel } from "@/lib/challan-labels";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { MagsLogo } from "@/components/brand/mags-logo";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle } from "lucide-react";
-import { prisma } from "@/lib/prisma";
-
-async function getChallan(token: string) {
-  return prisma.challan.findUnique({
-    where: { verifiedToken: token },
-    include: {
-      items: { include: { profile: true } },
-      vendor: true,
-    },
-  });
-}
+import { db } from "@/lib/data-access";
 
 export default async function VerifyChallanPage({
   params,
@@ -23,7 +13,7 @@ export default async function VerifyChallanPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const challan = await getChallan(token);
+  const challan = db.getChallanByToken(token);
 
   return (
     <div className="min-h-screen bg-[#DFE5F5] p-6">
@@ -58,19 +48,20 @@ export default async function VerifyChallanPage({
               <CardHeader>
                 <CardTitle>{challan.challanNumber}</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {CHALLAN_TYPE_LABELS[challan.type as keyof typeof CHALLAN_TYPE_LABELS]} ·{" "}
-                  {formatDate(challan.issueDate)}
+                  {CHALLAN_TYPE_LABELS[challan.type]} · {formatDate(challan.issueDate)}
                 </p>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span>Status</span>
-                  <Badge>{CHALLAN_STATUS_LABELS[challan.status as keyof typeof CHALLAN_STATUS_LABELS]}</Badge>
+                  <Badge>{CHALLAN_STATUS_LABELS[challan.status]}</Badge>
                 </div>
                 {challan.vendor && (
                   <div>
                     <p className="font-medium">{challan.vendor.name}</p>
-                    {challan.vendor.phone && <p className="text-muted-foreground">{challan.vendor.phone}</p>}
+                    {challan.vendor.phone && (
+                      <p className="text-muted-foreground">{challan.vendor.phone}</p>
+                    )}
                   </div>
                 )}
                 {challan.color && (
@@ -84,10 +75,12 @@ export default async function VerifyChallanPage({
                   <span>{formatNumber(challan.totalWeight)} KG</span>
                 </div>
                 <ul className="border-t pt-2 space-y-1">
-                  {challan.items?.map((item: { profile: { profileCode: string }; quantity: number; weight: number }, i: number) => (
+                  {challan.items?.map((item, i) => (
                     <li key={i} className="flex justify-between">
                       <span>{item.profile.profileCode}</span>
-                      <span>{item.quantity} pcs · {formatNumber(item.weight)} KG</span>
+                      <span>
+                        {item.quantity} pcs · {formatNumber(item.weight)} KG
+                      </span>
                     </li>
                   ))}
                 </ul>

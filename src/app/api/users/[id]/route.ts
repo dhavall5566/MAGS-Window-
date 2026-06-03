@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { userSchema } from "@/lib/validations";
 
@@ -18,37 +17,25 @@ export async function PUT(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const data: Record<string, unknown> = { ...parsed.data };
-  if (parsed.data.password) {
-    data.password = await bcrypt.hash(parsed.data.password, 10);
-  } else {
-    delete data.password;
-  }
+  const { password: _pw, ...data } = parsed.data;
 
-  const user = await prisma.user.update({
-    where: { id },
-    data,
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-    },
-  });
-
-  if (sessionUser) {
-    await prisma.activityLog.create({
-      data: {
+  try {
+    const user = db.updateUser(id, data);
+    if (sessionUser) {
+      db.createActivityLog({
         userId: sessionUser.id,
         action: "UPDATE",
         entity: "User",
         entityId: user.id,
         details: `Updated user ${user.email}`,
-      },
-    });
+      });
+    }
+    const { id: uid, name, email, role, status, createdAt } = user;
+    return NextResponse.json({ id: uid, name, email, role, status, createdAt });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed" },
+      { status: 404 }
+    );
   }
-
-  return NextResponse.json(user);
 }

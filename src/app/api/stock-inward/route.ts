@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { stockInwardSchema } from "@/lib/validations";
 import { processStockInward } from "@/lib/stock";
@@ -8,21 +8,7 @@ export async function GET() {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const entries = await prisma.stockInward.findMany({
-    orderBy: { date: "desc" },
-    include: {
-      profile: {
-        select: {
-          profileCode: true,
-          profileName: true,
-          imageUrl: true,
-          weightPerMeter: true,
-        },
-      },
-    },
-  });
-
-  return NextResponse.json(entries);
+  return NextResponse.json(db.getStockInwards());
 }
 
 export async function POST(req: NextRequest) {
@@ -37,16 +23,13 @@ export async function POST(req: NextRequest) {
 
   const date = parsed.data.date ? new Date(parsed.data.date) : new Date();
 
-  const entry = await prisma.stockInward.create({
-    data: {
-      profileId: parsed.data.profileId,
-      quantity: parsed.data.quantity,
-      length: parsed.data.length,
-      weight: parsed.data.weight,
-      date,
-      remarks: parsed.data.remarks,
-    },
-    include: { profile: true },
+  const entry = db.createStockInward({
+    profileId: parsed.data.profileId,
+    quantity: parsed.data.quantity,
+    length: parsed.data.length,
+    weight: parsed.data.weight,
+    date: date.toISOString(),
+    remarks: parsed.data.remarks,
   });
 
   await processStockInward(

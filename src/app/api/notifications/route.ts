@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { getSystemUser } from "@/lib/api-auth";
 
 export async function GET() {
   try {
     const user = await getSystemUser();
-    const notifications = await prisma.notification.findMany({
-      where: user ? { userId: user.id } : undefined,
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
+    const notifications = db.getNotifications(user?.id);
     return NextResponse.json({ notifications });
   } catch {
     return NextResponse.json({ notifications: [] });

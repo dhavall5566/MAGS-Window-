@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { userSchema } from "@/lib/validations";
 
@@ -8,17 +7,14 @@ export async function GET() {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const users = db.getUsers().map(({ id, name, email, role, status, createdAt }) => ({
+    id,
+    name,
+    email,
+    role,
+    status,
+    createdAt,
+  }));
 
   return NextResponse.json(users);
 }
@@ -33,47 +29,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  if (!parsed.data.password) {
-    return NextResponse.json({ error: "Password required" }, { status: 400 });
-  }
-
-  const existing = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-  });
-  if (existing) {
-    return NextResponse.json({ error: "Email already exists" }, { status: 409 });
-  }
-
-  const hashed = await bcrypt.hash(parsed.data.password, 10);
-  const user = await prisma.user.create({
-    data: {
+  try {
+    const user = db.createUser({
       name: parsed.data.name,
       email: parsed.data.email,
-      password: hashed,
       role: parsed.data.role,
       status: parsed.data.status,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-    },
-  });
+    });
 
-  if (sessionUser) {
-    await prisma.activityLog.create({
-      data: {
+    if (sessionUser) {
+      db.createActivityLog({
         userId: sessionUser.id,
         action: "CREATE",
         entity: "User",
         entityId: user.id,
         details: `Created user ${user.email}`,
-      },
-    });
-  }
+      });
+    }
 
-  return NextResponse.json(user, { status: 201 });
+    const { id, name, email, role, status, createdAt } = user;
+    return NextResponse.json({ id, name, email, role, status, createdAt }, { status: 201 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed";
+    return NextResponse.json({ error: msg }, { status: msg.includes("exists") ? 409 : 400 });
+  }
 }

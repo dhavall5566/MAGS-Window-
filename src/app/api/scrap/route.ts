@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { scrapSchema } from "@/lib/validations";
 import { processScrap } from "@/lib/stock";
@@ -8,16 +8,7 @@ export async function GET() {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const entries = await prisma.scrapWaste.findMany({
-    orderBy: { date: "desc" },
-    include: {
-      profile: {
-        select: { profileCode: true, profileName: true, imageUrl: true },
-      },
-    },
-  });
-
-  return NextResponse.json(entries);
+  return NextResponse.json(db.getScrapWastes());
 }
 
 export async function POST(req: NextRequest) {
@@ -47,15 +38,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const entry = await prisma.scrapWaste.create({
-    data: {
-      profileId: parsed.data.profileId,
-      quantity: parsed.data.quantity,
-      reason: parsed.data.reason,
-      remarks: parsed.data.remarks,
-      date,
-    },
-    include: { profile: true },
+  const entry = db.createScrapWaste({
+    profileId: parsed.data.profileId,
+    quantity: parsed.data.quantity,
+    reason: parsed.data.reason,
+    remarks: parsed.data.remarks,
+    date: date.toISOString(),
   });
 
   return NextResponse.json(entry, { status: 201 });

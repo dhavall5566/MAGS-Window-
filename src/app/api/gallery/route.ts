@@ -1,41 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const search = req.nextUrl.searchParams.get("search") ?? "";
-  const series = req.nextUrl.searchParams.get("series") ?? "";
+  const search = req.nextUrl.searchParams.get("search") ?? undefined;
+  const series = req.nextUrl.searchParams.get("series") ?? undefined;
 
-  const profiles = await prisma.profile.findMany({
-    where: {
-      status: "ACTIVE",
-      AND: [
-        search
-          ? {
-              OR: [
-                { profileCode: { contains: search, mode: "insensitive" } },
-                { profileName: { contains: search, mode: "insensitive" } },
-              ],
-            }
-          : {},
-        series ? { seriesName: series } : {},
-      ],
-    },
-    select: {
-      id: true,
-      profileCode: true,
-      profileName: true,
-      seriesName: true,
-      weightPerMeter: true,
-      imageUrl: true,
-      currentStock: true,
-      powderCoatedStock: true,
-    },
-    orderBy: { profileCode: "asc" },
-  });
+  const profiles = db
+    .getProfiles({ search, series, status: "ACTIVE" })
+    .map((p) => ({
+      id: p.id,
+      profileCode: p.profileCode,
+      profileName: p.profileName,
+      seriesName: p.seriesName,
+      weightPerMeter: p.weightPerMeter,
+      imageUrl: p.imageUrl,
+      currentStock: p.currentStock,
+      powderCoatedStock: p.powderCoatedStock,
+    }))
+    .sort((a, b) => a.profileCode.localeCompare(b.profileCode));
 
   return NextResponse.json(profiles);
 }

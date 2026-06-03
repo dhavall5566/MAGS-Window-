@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { profileSchema } from "@/lib/validations";
 
@@ -7,37 +7,15 @@ export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const search = req.nextUrl.searchParams.get("search") ?? "";
-  const series = req.nextUrl.searchParams.get("series") ?? "";
-  const status = req.nextUrl.searchParams.get("status");
+  const search = req.nextUrl.searchParams.get("search") ?? undefined;
+  const series = req.nextUrl.searchParams.get("series") ?? undefined;
+  const status = req.nextUrl.searchParams.get("status") ?? undefined;
 
-  const profiles = await prisma.profile.findMany({
-    where: {
-      AND: [
-        search
-          ? {
-              OR: [
-                { profileCode: { contains: search, mode: "insensitive" } },
-                { profileName: { contains: search, mode: "insensitive" } },
-                { seriesName: { contains: search, mode: "insensitive" } },
-              ],
-            }
-          : {},
-        series ? { seriesName: series } : {},
-        status ? { status: status as "ACTIVE" | "INACTIVE" } : {},
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const seriesList = await prisma.profile.findMany({
-    select: { seriesName: true },
-    distinct: ["seriesName"],
-  });
+  const profiles = db.getProfiles({ search, series, status });
 
   return NextResponse.json({
     profiles,
-    seriesList: seriesList.map((s) => s.seriesName),
+    seriesList: db.getSeriesList(),
   });
 }
 
@@ -51,26 +29,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const existing = await prisma.profile.findUnique({
-    where: { profileCode: parsed.data.profileCode },
-  });
-  if (existing) {
-    return NextResponse.json({ error: "Profile code already exists" }, { status: 409 });
-  }
-
-  const profile = await prisma.profile.create({ data: parsed.data });
-
-  if (user) {
-    await prisma.activityLog.create({
-      data: {
+  try {
+    const profile = db.createProfile(parsed.data);
+    if (user) {
+      db.createActivityLog({
         userId: user.id,
         action: "CREATE",
         entity: "Profile",
         entityId: profile.id,
         details: `Created profile ${profile.profileCode}`,
-      },
-    });
+      });
+    }
+    return NextResponse.json(profile, { status: 201 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed";
+    const status = msg.includes("exists") ? 409 : 400;
+    return NextResponse.json({ error: msg }, { status });
   }
-
-  return NextResponse.json(profile, { status: 201 });
 }

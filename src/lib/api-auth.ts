@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "./prisma";
-import { UserRole } from "@prisma/client";
+import { db } from "./data-access";
+import type { UserRole } from "./types";
 
 export type AppUser = {
   id: string;
@@ -12,10 +12,7 @@ export type AppUser = {
 /** Resolves the active system user for audit logs (no login required). */
 export async function getSystemUser(): Promise<AppUser | null> {
   try {
-    const user = await prisma.user.findFirst({
-      where: { status: "ACTIVE" },
-      orderBy: { createdAt: "asc" },
-    });
+    const user = db.getActiveUser();
     if (!user) return null;
     return {
       id: user.id,
@@ -33,10 +30,7 @@ export async function requireAuth() {
   if (!user) {
     return {
       error: NextResponse.json(
-        {
-          error:
-            "Database not ready. Start PostgreSQL and run: npm run db:push && npm run db:seed",
-        },
+        { error: "Data store not ready. Ensure data/database.json exists." },
         { status: 503 }
       ),
       user: null,

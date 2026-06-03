@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 import { challanSchema } from "@/lib/validations";
 import {
@@ -8,37 +8,25 @@ import {
   processChallanReturnComplete,
   logChallanActivity,
 } from "@/lib/challan";
-import { ChallanStatus, ChallanType } from "@prisma/client";
-
-const includeChallan = {
-  items: { include: { profile: true } },
-  vendor: true,
-  project: true,
-  parentChallan: { select: { id: true, challanNumber: true, type: true } },
-  childChallans: { select: { id: true, challanNumber: true, type: true, status: true } },
-};
+import type { ChallanStatus, ChallanType } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const type = req.nextUrl.searchParams.get("type");
-  const status = req.nextUrl.searchParams.get("status");
-  const vendorId = req.nextUrl.searchParams.get("vendorId");
-  const projectId = req.nextUrl.searchParams.get("projectId");
+  const type = req.nextUrl.searchParams.get("type") as ChallanType | null;
+  const status = req.nextUrl.searchParams.get("status") as ChallanStatus | null;
+  const vendorId = req.nextUrl.searchParams.get("vendorId") ?? undefined;
+  const projectId = req.nextUrl.searchParams.get("projectId") ?? undefined;
 
-  const challans = await prisma.challan.findMany({
-    where: {
-      ...(type ? { type: type as ChallanType } : {}),
-      ...(status ? { status: status as ChallanStatus } : {}),
-      ...(vendorId ? { vendorId } : {}),
-      ...(projectId ? { projectId } : {}),
-    },
-    include: includeChallan,
-    orderBy: { createdAt: "desc" },
-  });
-
-  return NextResponse.json(challans);
+  return NextResponse.json(
+    db.getChallans({
+      type: type ?? undefined,
+      status: status ?? undefined,
+      vendorId,
+      projectId,
+    })
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -56,13 +44,13 @@ export async function POST(req: NextRequest) {
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
   const challanNumber = await generateChallanNumber(rest.type as ChallanType);
 
-  let defaultStatus: ChallanStatus = ChallanStatus.DRAFT;
+  let defaultStatus: ChallanStatus = "DRAFT";
   if (rest.type === "POWDER_COATING" && issueNow) {
-    defaultStatus = ChallanStatus.SENT_FOR_COATING;
+    defaultStatus = "SENT_FOR_COATING";
   }
 
-  const challan = await prisma.challan.create({
-    data: {
+  const challan = db.createChallan(
+    {
       challanNumber,
       type: rest.type as ChallanType,
       status: (rest.status as ChallanStatus) ?? defaultStatus,
@@ -70,9 +58,9 @@ export async function POST(req: NextRequest) {
       projectId: rest.projectId || undefined,
       parentChallanId: rest.parentChallanId || undefined,
       color: rest.color,
-      issueDate: rest.issueDate ? new Date(rest.issueDate) : new Date(),
+      issueDate: rest.issueDate ? new Date(rest.issueDate).toISOString() : new Date().toISOString(),
       expectedReturnDate: rest.expectedReturnDate
-        ? new Date(rest.expectedReturnDate)
+        ? new Date(rest.expectedReturnDate).toISOString()
         : undefined,
       vehicleNo: rest.vehicleNo,
       driverName: rest.driverName,
@@ -82,10 +70,9 @@ export async function POST(req: NextRequest) {
       receivedBy: rest.receivedBy,
       totalWeight,
       totalQty,
-      items: { create: items },
     },
-    include: includeChallan,
-  });
+    items
+  );
 
   try {
     if (rest.type === "OUTWARD" && issueNow) {
@@ -99,7 +86,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(completed, { status: 201 });
     }
   } catch (e) {
-    await prisma.challan.delete({ where: { id: challan.id } });
+    db.deleteChallan(challan.id);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Processing failed" },
       { status: 400 }

@@ -6,8 +6,8 @@ import {
   CHALLAN_STATUS_LABELS,
   CHALLAN_TYPE_LABELS,
   colorLabel,
-} from "./challan";
-import { ChallanStatus, ChallanType, PowderCoatingColor } from "@prisma/client";
+} from "./challan-labels";
+import type { ChallanStatus, ChallanType, PowderCoatingColor } from "@/lib/types";
 import { formatDate } from "./utils";
 
 export type ChallanPdfData = {

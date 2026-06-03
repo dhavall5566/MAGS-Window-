@@ -4,14 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3001",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "db:init": "node scripts/init-db.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
