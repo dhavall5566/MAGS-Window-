@@ -25,6 +25,11 @@ import {
 import { exportToCSV, exportToExcel, exportToPDF } from "@/lib/export";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { POWDER_COLORS, POWDER_STATUSES } from "@/lib/constants";
+import { safeFetchJson, hasApiError } from "@/lib/safe-fetch";
+import {
+  fallbackProfilesResponse,
+  fallbackReportCurrentStock,
+} from "@/lib/client-fallbacks";
 
 const REPORT_TYPES = [
   { value: "current-stock", label: "Current Stock Report" },
@@ -45,8 +50,14 @@ function ReportsPageContent() {
         ? (initialType as string)
         : "current-stock"
   );
-  const [data, setData] = useState<Record<string, unknown>[]>([]);
-  const [profiles, setProfiles] = useState<{ id: string; profileCode: string }[]>([]);
+  const [data, setData] = useState<Record<string, unknown>[]>(fallbackReportCurrentStock);
+  const [demoMode, setDemoMode] = useState(false);
+  const [profiles, setProfiles] = useState<{ id: string; profileCode: string }[]>(
+    fallbackProfilesResponse.profiles.map((p) => ({
+      id: p.id,
+      profileCode: p.profileCode,
+    }))
+  );
   const [profileId, setProfileId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -55,7 +66,23 @@ function ReportsPageContent() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
+    (async () => {
+      const res = await safeFetchJson(
+        "/api/profiles",
+        fallbackProfilesResponse,
+        (d) =>
+          typeof d === "object" &&
+          d !== null &&
+          Array.isArray((d as { profiles?: unknown }).profiles)
+      );
+      setProfiles(
+        (res.data.profiles ?? []).map((p) => ({
+          id: p.id,
+          profileCode: p.profileCode,
+        }))
+      );
+      if (res.demo) setDemoMode(true);
+    })();
   }, []);
 
   useEffect(() => {
@@ -73,18 +100,33 @@ function ReportsPageContent() {
     if (to) params.set("to", to);
     if (color) params.set("color", color);
     if (status) params.set("status", status);
-    const res = await fetch(`/api/reports?${params}`);
-    const result = await res.json();
-    setData(Array.isArray(result) ? result : []);
+    try {
+      const res = await fetch(`/api/reports?${params}`);
+      const result: unknown = await res.json();
+      if (!res.ok || hasApiError(result) || !Array.isArray(result)) {
+        setData(fallbackReportCurrentStock);
+        setDemoMode(true);
+      } else {
+        setData(result as Record<string, unknown>[]);
+      }
+    } catch {
+      setData(fallbackReportCurrentStock);
+      setDemoMode(true);
+    }
     setLoading(false);
   };
 
   const title = REPORT_TYPES.find((r) => r.value === reportType)?.label ?? "Report";
-  const headers = data[0] ? Object.keys(data[0]) : [];
+  const rows = data ?? [];
+  const headers = rows[0] ? Object.keys(rows[0]) : [];
 
   return (
     <div>
-      <PageHeader title="Reports" description="Generate and export inventory and production reports" />
+      <PageHeader
+        title="Reports"
+        description="Generate and export inventory and production reports"
+        demoMode={demoMode}
+      />
 
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-base">Report Parameters</CardTitle></CardHeader>
@@ -148,7 +190,7 @@ function ReportsPageContent() {
             <Button onClick={generate} disabled={loading} className="flex-1">
               {loading ? "Generating..." : "Generate Report"}
             </Button>
-            {data.length > 0 && (
+            {rows.length > 0 && (
               <>
                 <Button variant="outline" onClick={() => exportToCSV(data as never, reportType)}>
                   <Download className="h-4 w-4" />
@@ -165,9 +207,9 @@ function ReportsPageContent() {
         </CardContent>
       </Card>
 
-      {data.length > 0 && (
+      {rows.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">{title} ({data.length} rows)</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{title} ({rows.length} rows)</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -176,7 +218,7 @@ function ReportsPageContent() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((row, i) => (
+                {rows.map((row, i) => (
                   <TableRow key={i}>
                     {headers.map((h) => (
                       <TableCell key={h}>{String(row[h] ?? "")}</TableCell>

@@ -23,19 +23,33 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { profileSchema } from "@/lib/validations";
 import { Skeleton } from "@/components/ui/skeleton";
+import { safeFetchJson } from "@/lib/safe-fetch";
+import { fallbackProfileDetail } from "@/lib/client-fallbacks";
 
 export default function ProfileDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
+  const profileId = id ?? "prof-1";
+  const [profile, setProfile] = useState<Record<string, unknown> | null>(
+    () => fallbackProfileDetail(profileId) as Record<string, unknown>
+  );
+  const [demoMode, setDemoMode] = useState(false);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(() => {
-    fetch(`/api/profiles/${id}`)
-      .then((r) => r.json())
-      .then(setProfile)
-      .finally(() => setLoading(false));
-  }, [id]);
+  const load = useCallback(async () => {
+    const res = await safeFetchJson(
+      `/api/profiles/${profileId}`,
+      fallbackProfileDetail(profileId) as Record<string, unknown>,
+      (d) =>
+        typeof d === "object" &&
+        d !== null &&
+        "profileCode" in d &&
+        !("error" in d)
+    );
+    setProfile(res.data);
+    setDemoMode(res.demo);
+    setLoading(false);
+  }, [profileId]);
 
   useEffect(() => {
     load();
@@ -57,9 +71,8 @@ export default function ProfileDetailPage() {
   };
 
   if (loading) return <Skeleton className="h-96 w-full" />;
-  if (!profile) return <p>Profile not found</p>;
 
-  const p = profile as {
+  const p = (profile ?? fallbackProfileDetail(profileId)) as {
     id: string;
     profileCode: string;
     profileName: string;
@@ -75,10 +88,11 @@ export default function ProfileDetailPage() {
     lowStockThreshold: number;
     stockLedgers: { transactionType: string; quantity: number; balance: number; date: string; user: { name: string } }[];
   };
+  const stockLedgers = p.stockLedgers ?? [];
 
   return (
     <div>
-      <PageHeader title={p.profileCode} description={p.profileName}>
+      <PageHeader title={p.profileCode} description={p.profileName} demoMode={demoMode}>
         <Button variant="outline" asChild>
           <Link href="/profiles"><ArrowLeft className="mr-2 h-4 w-4" />Back</Link>
         </Button>
@@ -167,7 +181,7 @@ export default function ProfileDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {p.stockLedgers?.map((l, i) => (
+                  {stockLedgers.map((l, i) => (
                     <TableRow key={i}>
                       <TableCell>{formatDate(l.date)}</TableCell>
                       <TableCell>{l.transactionType.replace(/_/g, " ")}</TableCell>

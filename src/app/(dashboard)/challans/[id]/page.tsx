@@ -28,40 +28,83 @@ import { formatDate, formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Download, Printer, Package } from "lucide-react";
+import { safeFetchJson } from "@/lib/safe-fetch";
+import { fallbackChallanById } from "@/lib/client-fallbacks";
+
+type ChallanItem = {
+  quantity: number;
+  length?: number;
+  weight: number;
+  profile: { profileCode: string; profileName: string; imageUrl?: string };
+};
+
+type ChallanData = {
+  id: string;
+  challanNumber: string;
+  type: string;
+  status: string;
+  issueDate: string;
+  totalWeight: number;
+  totalQty: number;
+  color?: string;
+  vehicleNo?: string;
+  driverName?: string;
+  remarks?: string;
+  preparedBy?: string;
+  verifiedToken?: string;
+  vendor?: { name: string; phone?: string; address?: string };
+  project?: { projectCode: string; projectName: string };
+  parentChallan?: { challanNumber: string };
+  items?: ChallanItem[];
+};
+
+function toChallanData(raw: Record<string, unknown>): ChallanData {
+  const items = Array.isArray(raw.items) ? (raw.items as ChallanItem[]) : [];
+  return {
+    id: String(raw.id ?? ""),
+    challanNumber: String(raw.challanNumber ?? "—"),
+    type: String(raw.type ?? "OUTWARD"),
+    status: String(raw.status ?? "DRAFT"),
+    issueDate: String(raw.issueDate ?? new Date().toISOString()),
+    totalWeight: Number(raw.totalWeight ?? 0),
+    totalQty: Number(raw.totalQty ?? 0),
+    color: raw.color as string | undefined,
+    vehicleNo: raw.vehicleNo as string | undefined,
+    driverName: raw.driverName as string | undefined,
+    remarks: raw.remarks as string | undefined,
+    preparedBy: raw.preparedBy as string | undefined,
+    verifiedToken: raw.verifiedToken as string | undefined,
+    vendor: raw.vendor as ChallanData["vendor"],
+    project: raw.project as ChallanData["project"],
+    parentChallan: raw.parentChallan as ChallanData["parentChallan"],
+    items,
+  };
+}
 
 export default function ChallanDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [challan, setChallan] = useState<Record<string, unknown> | null>(null);
+  const [challan, setChallan] = useState<ChallanData>(() =>
+    toChallanData(fallbackChallanById(id) as unknown as Record<string, unknown>)
+  );
+  const [demoMode, setDemoMode] = useState(false);
 
-  const load = useCallback(() => {
-    fetch(`/api/challans/${id}`).then((r) => r.json()).then(setChallan);
+  const load = useCallback(async () => {
+    const fallback = fallbackChallanById(id);
+    const res = await safeFetchJson(
+      `/api/challans/${id}`,
+      fallback,
+      (d) => typeof d === "object" && d !== null && !("error" in d)
+    );
+    setChallan(toChallanData(res.data as unknown as Record<string, unknown>));
+    if (res.demo) setDemoMode(true);
   }, [id]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  if (!challan) return <p className="p-6">Loading...</p>;
-
-  const c = challan as {
-    id: string;
-    challanNumber: string;
-    type: string;
-    status: string;
-    issueDate: string;
-    totalWeight: number;
-    totalQty: number;
-    color?: string;
-    vehicleNo?: string;
-    driverName?: string;
-    remarks?: string;
-    preparedBy?: string;
-    verifiedToken: string;
-    vendor?: { name: string; phone?: string; address?: string };
-    project?: { projectCode: string; projectName: string };
-    parentChallan?: { challanNumber: string };
-    items: { quantity: number; length?: number; weight: number; profile: { profileCode: string; profileName: string; imageUrl?: string } }[];
-  };
+  const c = challan;
+  const lineItems = c.items ?? [];
 
   const updateStatus = async (status: string) => {
     const res = await fetch(`/api/challans/${id}`, {
@@ -69,7 +112,10 @@ export default function ChallanDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    if (!res.ok) { toast.error("Failed"); return; }
+    if (!res.ok) {
+      toast.error("Failed");
+      return;
+    }
     toast.success("Status updated");
     load();
   };
@@ -81,8 +127,8 @@ export default function ChallanDetailPage() {
       body: JSON.stringify({ action }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      toast.error(err.error ?? "Failed");
+      const err = await res.json().catch(() => ({}));
+      toast.error((err as { error?: string }).error ?? "Failed");
       return;
     }
     toast.success("Done");
@@ -91,7 +137,11 @@ export default function ChallanDetailPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={c.challanNumber} description={CHALLAN_TYPE_LABELS[c.type as keyof typeof CHALLAN_TYPE_LABELS]}>
+      <PageHeader
+        title={c.challanNumber}
+        description={CHALLAN_TYPE_LABELS[c.type as keyof typeof CHALLAN_TYPE_LABELS]}
+        demoMode={demoMode}
+      >
         <Button variant="outline" asChild>
           <Link href="/challans"><ArrowLeft className="mr-2 h-4 w-4" />Back</Link>
         </Button>
@@ -170,31 +220,39 @@ export default function ChallanDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {c.items.map((item, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-10 w-10 rounded bg-muted overflow-hidden shrink-0">
-                          {item.profile.imageUrl ? (
-                            <Image src={item.profile.imageUrl} alt="" fill className="object-cover" />
-                          ) : (
-                            <Package className="m-2 h-6 w-6 text-muted-foreground/40" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium">{item.profile.profileCode}</p>
-                          <p className="text-xs text-muted-foreground">{item.profile.profileName}</p>
-                        </div>
-                      </div>
+                {lineItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-muted-foreground">
+                      No line items
                     </TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>{item.length ?? "—"}</TableCell>
-                    <TableCell>{formatNumber(item.weight)} KG</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  lineItems.map((item, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="relative h-10 w-10 rounded bg-muted overflow-hidden shrink-0">
+                            {item.profile?.imageUrl ? (
+                              <Image src={item.profile.imageUrl} alt="" fill className="object-cover" />
+                            ) : (
+                              <Package className="m-2 h-6 w-6 text-muted-foreground/40" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-medium">{item.profile?.profileCode ?? "—"}</p>
+                            <p className="text-xs text-muted-foreground">{item.profile?.profileName ?? ""}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{item.length ?? "—"}</TableCell>
+                      <TableCell>{formatNumber(item.weight)} KG</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 <TableRow className="font-bold">
                   <TableCell colSpan={3}>Total</TableCell>
-                  <TableCell>{formatNumber(c.totalWeight)} KG</TableCell>
+                  <TableCell>{formatNumber(c.totalWeight ?? 0)} KG</TableCell>
                 </TableRow>
               </TableBody>
             </Table>

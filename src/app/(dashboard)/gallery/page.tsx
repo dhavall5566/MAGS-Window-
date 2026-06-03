@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { formatNumber } from "@/lib/utils";
 import Link from "next/link";
+import { safeFetchArray } from "@/lib/safe-fetch";
+import { fallbackGalleryProfiles } from "@/lib/client-fallbacks";
 
 interface GalleryProfile {
   id: string;
@@ -34,18 +36,24 @@ interface GalleryProfile {
 }
 
 export default function GalleryPage() {
-  const [profiles, setProfiles] = useState<GalleryProfile[]>([]);
+  const [profiles, setProfiles] = useState<GalleryProfile[]>(fallbackGalleryProfiles);
+  const [demoMode, setDemoMode] = useState(false);
   const [search, setSearch] = useState("");
   const [series, setSeries] = useState("");
   const [preview, setPreview] = useState<GalleryProfile | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (series) params.set("series", series);
-    fetch(`/api/gallery?${params}`)
-      .then((r) => r.json())
-      .then(setProfiles);
+    (async () => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (series) params.set("series", series);
+      const res = await safeFetchArray<GalleryProfile>(
+        `/api/gallery?${params}`,
+        fallbackGalleryProfiles
+      );
+      setProfiles(res.data);
+      setDemoMode(res.demo);
+    })();
   }, [search, series]);
 
   const seriesList = [...new Set(profiles.map((p) => p.seriesName))];
@@ -55,6 +63,7 @@ export default function GalleryPage() {
       <PageHeader
         title="Profile Gallery"
         description="Visual catalogue of aluminium profiles with stock availability"
+        demoMode={demoMode}
       />
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row">

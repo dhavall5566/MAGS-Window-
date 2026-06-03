@@ -39,6 +39,16 @@ import {
   Loader2,
   Eye,
 } from "lucide-react";
+import { safeFetchArray, safeFetchJson } from "@/lib/safe-fetch";
+import {
+  fallbackChallanMetrics,
+  fallbackChallans,
+  fallbackOutwardChallans,
+  fallbackProfilesResponse,
+  fallbackProjects,
+  fallbackVendors,
+  fallbackChallanById,
+} from "@/lib/client-fallbacks";
 
 type ChallanRow = {
   id: string;
@@ -54,17 +64,28 @@ type ChallanRow = {
 };
 
 export default function ChallansPage() {
-  const [metrics, setMetrics] = useState({
-    materialSentForCoating: 0,
-    materialReturned: 0,
-    pendingCoating: 0,
-    vendorWise: [] as { vendorName: string; totalWeight: number; challanCount: number }[],
-  });
-  const [challans, setChallans] = useState<ChallanRow[]>([]);
-  const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
-  const [projects, setProjects] = useState<{ id: string; projectCode: string; projectName: string }[]>([]);
-  const [profiles, setProfiles] = useState<{ id: string; profileCode: string; profileName: string; weightPerMeter: number; currentStock: number; imageUrl?: string | null }[]>([]);
-  const [outwardChallans, setOutwardChallans] = useState<ChallanRow[]>([]);
+  const [metrics, setMetrics] = useState(fallbackChallanMetrics);
+  const [challans, setChallans] = useState<ChallanRow[]>(
+    fallbackChallans as unknown as ChallanRow[]
+  );
+  const [vendors, setVendors] = useState(fallbackVendors);
+  const [projects, setProjects] = useState(
+    fallbackProjects as { id: string; projectCode: string; projectName: string }[]
+  );
+  const [profiles, setProfiles] = useState(
+    fallbackProfilesResponse.profiles as {
+      id: string;
+      profileCode: string;
+      profileName: string;
+      weightPerMeter: number;
+      currentStock: number;
+      imageUrl?: string | null;
+    }[]
+  );
+  const [outwardChallans, setOutwardChallans] = useState<ChallanRow[]>(
+    fallbackOutwardChallans as unknown as ChallanRow[]
+  );
+  const [demoMode, setDemoMode] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [outwardForm, setOutwardForm] = useState({
@@ -105,16 +126,53 @@ export default function ChallansPage() {
 
   const [vendorForm, setVendorForm] = useState({ name: "", contactPerson: "", phone: "", address: "" });
 
-  const load = () => {
-    fetch("/api/challans/metrics").then((r) => r.json()).then(setMetrics);
-    fetch("/api/challans").then((r) => r.json()).then(setChallans);
-    fetch("/api/challans?type=OUTWARD").then((r) => r.json()).then(setOutwardChallans);
-    fetch("/api/vendors").then((r) => r.json()).then(setVendors);
-    fetch("/api/projects").then((r) => r.json()).then(setProjects);
-    fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
+  const load = async () => {
+    let demo = false;
+    const mRes = await safeFetchJson("/api/challans/metrics", fallbackChallanMetrics, (d) =>
+      typeof d === "object" &&
+      d !== null &&
+      "materialSentForCoating" in d &&
+      Array.isArray((d as { vendorWise?: unknown }).vendorWise)
+    );
+    setMetrics(mRes.data);
+    if (mRes.demo) demo = true;
+
+    const cRes = await safeFetchArray("/api/challans", fallbackChallans);
+    setChallans(cRes.data as unknown as ChallanRow[]);
+    if (cRes.demo) demo = true;
+
+    const oRes = await safeFetchArray(
+      "/api/challans?type=OUTWARD",
+      fallbackOutwardChallans
+    );
+    setOutwardChallans(oRes.data as unknown as ChallanRow[]);
+    if (oRes.demo) demo = true;
+
+    const vRes = await safeFetchArray("/api/vendors", fallbackVendors);
+    setVendors(vRes.data);
+    if (vRes.demo) demo = true;
+
+    const pRes = await safeFetchArray("/api/projects", fallbackProjects);
+    setProjects(pRes.data as typeof projects);
+    if (pRes.demo) demo = true;
+
+    const profRes = await safeFetchJson(
+      "/api/profiles",
+      fallbackProfilesResponse,
+      (d) =>
+        typeof d === "object" &&
+        d !== null &&
+        Array.isArray((d as { profiles?: unknown }).profiles)
+    );
+    setProfiles((profRes.data.profiles ?? []) as typeof profiles);
+    if (profRes.demo) demo = true;
+
+    setDemoMode(demo);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const submitChallan = async (
     type: "OUTWARD" | "POWDER_COATING" | "RETURN",
@@ -138,15 +196,22 @@ export default function ChallansPage() {
   };
 
   const loadParentItems = async (parentId: string, setter: (items: ChallanLineItem[]) => void) => {
-    const res = await fetch(`/api/challans/${parentId}`);
-    const parent = await res.json();
+    const fallback = fallbackChallanById(parentId);
+    const { data: parent, demo } = await safeFetchJson(
+      `/api/challans/${parentId}`,
+      fallback,
+      (d) => typeof d === "object" && d !== null && "items" in d
+    );
+    if (demo) setDemoMode(true);
+    const items = (parent as { items?: { profileId: string; quantity: number; length?: number; weight: number }[] })
+      .items;
     setter(
-      parent.items?.map((i: { profileId: string; quantity: number; length: number; weight: number }) => ({
+      (items ?? []).map((i) => ({
         profileId: i.profileId,
         quantity: i.quantity,
         length: i.length ?? 6,
         weight: i.weight,
-      })) ?? []
+      }))
     );
   };
 
@@ -155,6 +220,7 @@ export default function ChallansPage() {
       <PageHeader
         title="Challan Management"
         description="Outward, powder coating, return challans with PDF, print, and project workflows"
+        demoMode={demoMode}
       />
 
       <Tabs defaultValue="overview">
@@ -172,20 +238,20 @@ export default function ChallansPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Material Sent for Coating"
-              value={`${formatNumber(metrics.materialSentForCoating)} KG`}
+              value={`${formatNumber(metrics?.materialSentForCoating ?? 0)} KG`}
               icon={Truck}
               href="/challans?tab=outward"
             />
             <StatCard
               title="Material Returned"
-              value={`${formatNumber(metrics.materialReturned)} KG`}
+              value={`${formatNumber(metrics?.materialReturned ?? 0)} KG`}
               icon={RotateCcw}
               variant="success"
               href="/challans?tab=return"
             />
             <StatCard
               title="Pending Coating"
-              value={metrics.pendingCoating}
+              value={metrics?.pendingCoating ?? 0}
               icon={Paintbrush}
               variant="warning"
               href="/challans?tab=powder"
@@ -204,10 +270,10 @@ export default function ChallansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {metrics.vendorWise.length === 0 ? (
+                  {(metrics?.vendorWise ?? []).length === 0 ? (
                     <TableRow><TableCell colSpan={3} className="text-muted-foreground">No data yet</TableCell></TableRow>
                   ) : (
-                    metrics.vendorWise.map((v, i) => (
+                    (metrics?.vendorWise ?? []).map((v, i) => (
                       <TableRow key={i}>
                         <TableCell className="font-medium">{v.vendorName}</TableCell>
                         <TableCell>{v.challanCount}</TableCell>
@@ -270,7 +336,7 @@ export default function ChallansPage() {
                 </Button>
               </CardContent>
             </Card>
-            <ChallanList challans={challans.filter((c) => c.type === "OUTWARD")} title="Outward Challans" />
+            <ChallanList challans={(challans ?? []).filter((c) => c.type === "OUTWARD")} title="Outward Challans" />
           </div>
         </TabsContent>
 
@@ -290,7 +356,7 @@ export default function ChallansPage() {
                   >
                     <SelectTrigger><SelectValue placeholder="Select outward challan" /></SelectTrigger>
                     <SelectContent>
-                      {outwardChallans.filter((c) => c.status === "ISSUED").map((c) => (
+                      {(outwardChallans ?? []).filter((c) => c.status === "ISSUED").map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.challanNumber}</SelectItem>
                       ))}
                     </SelectContent>
@@ -326,7 +392,7 @@ export default function ChallansPage() {
                 </Button>
               </CardContent>
             </Card>
-            <ChallanList challans={challans.filter((c) => c.type === "POWDER_COATING")} title="Powder Coating Challans" />
+            <ChallanList challans={(challans ?? []).filter((c) => c.type === "POWDER_COATING")} title="Powder Coating Challans" />
           </div>
         </TabsContent>
 
@@ -346,7 +412,7 @@ export default function ChallansPage() {
                   >
                     <SelectTrigger><SelectValue placeholder="Outward / PC challan" /></SelectTrigger>
                     <SelectContent>
-                      {challans.filter((c) => c.type !== "RETURN").map((c) => (
+                      {(challans ?? []).filter((c) => c.type !== "RETURN").map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.challanNumber} ({c.type})</SelectItem>
                       ))}
                     </SelectContent>
@@ -370,7 +436,7 @@ export default function ChallansPage() {
                 </Button>
               </CardContent>
             </Card>
-            <ChallanList challans={challans.filter((c) => c.type === "RETURN")} title="Return Challans" />
+            <ChallanList challans={(challans ?? []).filter((c) => c.type === "RETURN")} title="Return Challans" />
           </div>
         </TabsContent>
 
@@ -439,7 +505,7 @@ export default function ChallansPage() {
             </CardContent>
           </Card>
           <div className="grid gap-4 md:grid-cols-2">
-            {projects.map((p) => (
+            {(projects ?? []).map((p) => (
               <Card key={p.id}>
                 <CardContent className="pt-6 flex items-center justify-between">
                   <div>
@@ -496,14 +562,14 @@ export default function ChallansPage() {
             </CardContent>
           </Card>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {vendors.map((v) => (
+            {(vendors ?? []).map((v) => (
               <Card key={v.id}><CardContent className="pt-4 font-medium">{v.name}</CardContent></Card>
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="all" className="mt-4">
-          <ChallanList challans={challans} title="All Challans" />
+          <ChallanList challans={challans ?? []} title="All Challans" />
         </TabsContent>
       </Tabs>
     </div>

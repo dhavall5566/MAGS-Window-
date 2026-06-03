@@ -42,75 +42,62 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber, formatDateTime } from "@/lib/utils";
+import { safeFetchJson } from "@/lib/safe-fetch";
+import {
+  fallbackDashboard,
+  fallbackChallanMetrics,
+} from "@/lib/client-fallbacks";
 
 const CHART_COLORS = ["#4F5B85", "#0d9488", "#d97706", "#dc2626", "#7c3aed", "#db2777"];
 
-interface DashboardData {
-  stats: {
-    totalProfiles: number;
-    availableStock: number;
-    lowStockCount: number;
-    totalConsumption: number;
-    pendingCoating: number;
-    completedCoating: number;
-    scrapQuantity: number;
-  };
-  lowStockProfiles: { profileCode: string; profileName: string; currentStock: number; lowStockThreshold: number }[];
-  recentTransactions: {
-    id: string;
-    transactionType: string;
-    quantity: number;
-    balance: number;
-    date: string;
-    profile: { profileCode: string; profileName: string };
-    user: { name: string };
-  }[];
-  charts: {
-    inventoryOverview: { name: string; stock: number }[];
-    consumptionTrend: { month: string; weight: number }[];
-    colorWiseCoating: { color: string; weight: number }[];
-    stockMovement: { month: string; inward: number; outward: number }[];
-  };
-}
-
-interface ChallanMetrics {
-  materialSentForCoating: number;
-  materialReturned: number;
-  pendingCoating: number;
-}
+type DashboardData = typeof fallbackDashboard;
+type ChallanMetrics = typeof fallbackChallanMetrics;
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [challanMetrics, setChallanMetrics] = useState<ChallanMetrics | null>(null);
+  const [data, setData] = useState<DashboardData>(fallbackDashboard);
+  const [challanMetrics, setChallanMetrics] = useState<ChallanMetrics>(fallbackChallanMetrics);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/dashboard").then(async (r) => {
-        const json = await r.json();
-        if (!r.ok || json.error || !json.stats) {
-          throw new Error(json.error ?? "Failed to load dashboard");
-        }
-        return json as DashboardData;
-      }),
-      fetch("/api/challans/metrics").then(async (r) => {
-        const json = await r.json();
-        if (!r.ok || json.error) return null;
-        return json as ChallanMetrics;
-      }),
-    ])
-      .then(([dash, challan]) => {
-        setData(dash);
-        setChallanMetrics(challan);
-        setLoadError(null);
-      })
-      .catch((e) => {
-        setLoadError(e instanceof Error ? e.message : "Failed to load dashboard");
-        setData(null);
-      })
-      .finally(() => setLoading(false));
+    (async () => {
+      let demo = false;
+      const dash = await safeFetchJson(
+        "/api/dashboard",
+        fallbackDashboard,
+        (d) =>
+          typeof d === "object" &&
+          d !== null &&
+          "stats" in d &&
+          typeof (d as DashboardData).stats?.totalProfiles === "number"
+      );
+      if (dash.demo) demo = true;
+      setData(dash.data);
+
+      const met = await safeFetchJson(
+        "/api/challans/metrics",
+        fallbackChallanMetrics,
+        (d) =>
+          typeof d === "object" &&
+          d !== null &&
+          "materialSentForCoating" in d
+      );
+      if (met.demo) demo = true;
+      setChallanMetrics(met.data);
+
+      setDemoMode(demo);
+      setLoading(false);
+    })();
   }, []);
+
+  const stats = data?.stats ?? fallbackDashboard.stats;
+  const charts = data?.charts ?? fallbackDashboard.charts;
+  const lowStockProfiles = data?.lowStockProfiles ?? [];
+  const recentTransactions = data?.recentTransactions ?? [];
+  const inventoryOverview = charts?.inventoryOverview ?? [];
+  const consumptionTrend = charts?.consumptionTrend ?? [];
+  const colorWiseCoating = charts?.colorWiseCoating ?? [];
+  const stockMovement = charts?.stockMovement ?? [];
 
   if (loading) {
     return (
@@ -125,104 +112,88 @@ export default function DashboardPage() {
     );
   }
 
-  if (loadError || !data?.stats) {
-    return (
-      <div className="space-y-4">
-        <PageHeader title="Dashboard" description="Inventory and operations overview" />
-        <p className="text-sm text-destructive">
-          {loadError ?? "Dashboard data is unavailable. Please refresh the page."}
-        </p>
-      </div>
-    );
-  }
-
-  const { stats, charts, recentTransactions, lowStockProfiles } = data;
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
         description="Real-time overview of aluminium profile inventory and operations"
+        demoMode={demoMode}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Profiles"
-          value={stats.totalProfiles}
+          value={stats?.totalProfiles ?? 0}
           icon={Package}
           href="/profiles"
         />
         <StatCard
           title="Available Stock"
-          value={`${formatNumber(stats.availableStock)} KG`}
+          value={`${formatNumber(stats?.availableStock ?? 0)} KG`}
           icon={Warehouse}
           variant="success"
           href="/reports?type=current-stock"
         />
         <StatCard
           title="Low Stock Profiles"
-          value={stats.lowStockCount}
+          value={stats?.lowStockCount ?? 0}
           icon={AlertTriangle}
           variant="warning"
           href="/reports?type=low-stock"
         />
         <StatCard
           title="Total Consumption"
-          value={`${formatNumber(stats.totalConsumption)} KG`}
+          value={`${formatNumber(stats?.totalConsumption ?? 0)} KG`}
           icon={Gauge}
           href="/consumption"
         />
         <StatCard
           title="Pending Coating"
-          value={stats.pendingCoating}
+          value={stats?.pendingCoating ?? 0}
           icon={Paintbrush}
           variant="warning"
           href="/powder-coating"
         />
         <StatCard
           title="Completed Coating"
-          value={stats.completedCoating}
+          value={stats?.completedCoating ?? 0}
           icon={CheckCircle}
           variant="success"
           href="/powder-coating?status=COMPLETED"
         />
         <StatCard
           title="Scrap Quantity"
-          value={`${formatNumber(stats.scrapQuantity)} KG`}
+          value={`${formatNumber(stats?.scrapQuantity ?? 0)} KG`}
           icon={Trash2}
           variant="danger"
           href="/scrap"
         />
       </div>
 
-      {challanMetrics && (
-        <>
-          <h2 className="text-lg font-semibold">Challan Metrics</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              title="Material Sent for Coating"
-              value={`${formatNumber(challanMetrics.materialSentForCoating)} KG`}
-              icon={Truck}
-              href="/challans"
-            />
-            <StatCard
-              title="Material Returned"
-              value={`${formatNumber(challanMetrics.materialReturned)} KG`}
-              icon={RotateCcw}
-              variant="success"
-              href="/challans"
-            />
-            <StatCard
-              title="Pending Coating (Challans)"
-              value={challanMetrics.pendingCoating}
-              icon={Paintbrush}
-              variant="warning"
-              href="/challans"
-            />
-            <StatCard title="Challan Management" value="Open" icon={FileText} href="/challans" />
-          </div>
-        </>
-      )}
+      <h2 className="text-lg font-semibold">Challan Metrics</h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Material Sent for Coating"
+          value={`${formatNumber(challanMetrics?.materialSentForCoating ?? 0)} KG`}
+          icon={Truck}
+          href="/challans"
+        />
+        <StatCard
+          title="Material Returned"
+          value={`${formatNumber(challanMetrics?.materialReturned ?? 0)} KG`}
+          icon={RotateCcw}
+          variant="success"
+          href="/challans"
+        />
+        <StatCard
+          title="Pending Coating (Challans)"
+          value={challanMetrics?.pendingCoating ?? 0}
+          icon={Paintbrush}
+          variant="warning"
+          href="/challans"
+        />
+        <StatCard title="Challan Management" value="Open" icon={FileText} href="/challans" />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -231,7 +202,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={charts.inventoryOverview}>
+              <BarChart data={inventoryOverview}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
@@ -248,7 +219,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={charts.consumptionTrend}>
+              <LineChart data={consumptionTrend}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
@@ -267,7 +238,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={charts.colorWiseCoating}
+                  data={colorWiseCoating}
                   dataKey="weight"
                   nameKey="color"
                   cx="50%"
@@ -275,7 +246,7 @@ export default function DashboardPage() {
                   outerRadius={90}
                   label
                 >
-                  {charts.colorWiseCoating.map((_, i) => (
+                  {colorWiseCoating.map((_, i) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Pie>
@@ -292,7 +263,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={charts.stockMovement}>
+              <BarChart data={stockMovement}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
@@ -349,13 +320,13 @@ export default function DashboardPage() {
               <TableBody>
                 {recentTransactions.map((t) => (
                   <TableRow key={t.id}>
-                    <TableCell className="font-medium">{t.profile.profileCode}</TableCell>
+                    <TableCell className="font-medium">{t.profile?.profileCode ?? "—"}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-xs">
-                        {t.transactionType.replace(/_/g, " ")}
+                        {(t.transactionType ?? "").replace(/_/g, " ")}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatNumber(t.quantity)}</TableCell>
+                    <TableCell>{formatNumber(t.quantity ?? 0)}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {formatDateTime(t.date)}
                     </TableCell>

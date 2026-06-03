@@ -23,12 +23,25 @@ import {
 import { formatDate, formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2, ArrowDownToLine } from "lucide-react";
+import { safeFetchArray, safeFetchJson } from "@/lib/safe-fetch";
+import {
+  fallbackProfilesResponse,
+  fallbackStockInwards,
+} from "@/lib/client-fallbacks";
 
 type FormData = z.infer<typeof stockInwardSchema>;
 
 export default function StockInwardPage() {
-  const [profiles, setProfiles] = useState<{ id: string; profileCode: string; profileName: string; imageUrl?: string | null }[]>([]);
-  const [entries, setEntries] = useState<Record<string, unknown>[]>([]);
+  const [profiles, setProfiles] = useState(
+    fallbackProfilesResponse.profiles as {
+      id: string;
+      profileCode: string;
+      profileName: string;
+      imageUrl?: string | null;
+    }[]
+  );
+  const [entries, setEntries] = useState<Record<string, unknown>[]>(fallbackStockInwards);
+  const [demoMode, setDemoMode] = useState(false);
 
   const { register, handleSubmit, setValue, watch, reset, formState: { isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(stockInwardSchema),
@@ -37,12 +50,22 @@ export default function StockInwardPage() {
 
   const profileId = watch("profileId");
 
-  const load = () => {
-    fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
-    fetch("/api/stock-inward").then((r) => r.json()).then(setEntries);
+  const load = async () => {
+    let demo = false;
+    const pRes = await safeFetchJson("/api/profiles", fallbackProfilesResponse, (d) =>
+      typeof d === "object" && d !== null && Array.isArray((d as { profiles?: unknown }).profiles)
+    );
+    setProfiles((pRes.data.profiles ?? []) as typeof profiles);
+    if (pRes.demo) demo = true;
+    const eRes = await safeFetchArray("/api/stock-inward", fallbackStockInwards);
+    setEntries(eRes.data);
+    if (eRes.demo) demo = true;
+    setDemoMode(demo);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const onSubmit = async (data: FormData) => {
     const res = await fetch("/api/stock-inward", {
@@ -61,7 +84,11 @@ export default function StockInwardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Stock Inward" description="Record incoming aluminium profile stock" />
+      <PageHeader
+        title="Stock Inward"
+        description="Record incoming aluminium profile stock"
+        demoMode={demoMode}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">

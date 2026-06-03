@@ -14,6 +14,8 @@ import {
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
+import { safeFetchJson } from "@/lib/safe-fetch";
+import { fallbackNotifications } from "@/lib/client-fallbacks";
 interface HeaderProps {
   onMenuClick: () => void;
 }
@@ -26,10 +28,17 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch("/api/notifications")
-      .then((r) => r.json())
-      .then((d) => setNotifications(d.notifications ?? []))
-      .catch(() => {});
+    (async () => {
+      const res = await safeFetchJson(
+        "/api/notifications",
+        { notifications: fallbackNotifications },
+        (d) =>
+          typeof d === "object" &&
+          d !== null &&
+          Array.isArray((d as { notifications?: unknown }).notifications)
+      );
+      setNotifications(res.data.notifications ?? fallbackNotifications);
+    })();
   }, []);
 
   const unread = notifications.filter((n) => !n.read).length;

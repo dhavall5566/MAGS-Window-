@@ -33,6 +33,11 @@ import { POWDER_COLORS, POWDER_STATUSES } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2, Paintbrush, CheckCircle } from "lucide-react";
+import { safeFetchArray, safeFetchJson } from "@/lib/safe-fetch";
+import {
+  fallbackProfilesResponse,
+  fallbackPowderCoatings,
+} from "@/lib/client-fallbacks";
 
 type FormData = z.infer<typeof powderCoatingSchema>;
 
@@ -46,8 +51,17 @@ const statusVariant: Record<string, "default" | "warning" | "success" | "seconda
 
 function PowderCoatingPageContent() {
   const searchParams = useSearchParams();
-  const [profiles, setProfiles] = useState<{ id: string; profileCode: string; profileName: string; imageUrl?: string | null; currentStock: number }[]>([]);
-  const [entries, setEntries] = useState<Record<string, unknown>[]>([]);
+  const [profiles, setProfiles] = useState(
+    fallbackProfilesResponse.profiles as {
+      id: string;
+      profileCode: string;
+      profileName: string;
+      imageUrl?: string | null;
+      currentStock: number;
+    }[]
+  );
+  const [entries, setEntries] = useState<Record<string, unknown>[]>(fallbackPowderCoatings);
+  const [demoMode, setDemoMode] = useState(false);
   const [colorFilter, setColorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState(
     () => searchParams.get("status") ?? ""
@@ -60,12 +74,23 @@ function PowderCoatingPageContent() {
 
   const profileId = watch("profileId");
 
-  const load = useCallback(() => {
-    fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
+  const load = useCallback(async () => {
+    let demo = false;
+    const pRes = await safeFetchJson("/api/profiles", fallbackProfilesResponse, (d) =>
+      typeof d === "object" && d !== null && Array.isArray((d as { profiles?: unknown }).profiles)
+    );
+    setProfiles((pRes.data.profiles ?? []) as typeof profiles);
+    if (pRes.demo) demo = true;
     const params = new URLSearchParams();
     if (colorFilter) params.set("color", colorFilter);
     if (statusFilter) params.set("status", statusFilter);
-    fetch(`/api/powder-coating?${params}`).then((r) => r.json()).then(setEntries);
+    const eRes = await safeFetchArray(
+      `/api/powder-coating?${params}`,
+      fallbackPowderCoatings
+    );
+    setEntries(eRes.data);
+    if (eRes.demo) demo = true;
+    setDemoMode(demo);
   }, [colorFilter, statusFilter]);
 
   useEffect(() => {
@@ -114,7 +139,11 @@ function PowderCoatingPageContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Powder Coating" description="Track raw and powder coated aluminium stock separately" />
+      <PageHeader
+        title="Powder Coating"
+        description="Track raw and powder coated aluminium stock separately"
+        demoMode={demoMode}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">

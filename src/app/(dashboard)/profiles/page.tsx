@@ -28,6 +28,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatNumber } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Package } from "lucide-react";
+import { safeFetchJson } from "@/lib/safe-fetch";
+import { fallbackProfilesResponse } from "@/lib/client-fallbacks";
 
 interface Profile {
   id: string;
@@ -41,22 +43,34 @@ interface Profile {
 }
 
 export default function ProfilesPage() {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [seriesList, setSeriesList] = useState<string[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>(
+    fallbackProfilesResponse.profiles as Profile[]
+  );
+  const [seriesList, setSeriesList] = useState<string[]>(
+    fallbackProfilesResponse.seriesList
+  );
+  const [demoMode, setDemoMode] = useState(false);
   const [search, setSearch] = useState("");
   const [series, setSeries] = useState("");
   const [view, setView] = useState<"table" | "card">("table");
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (series) params.set("series", series);
-    fetch(`/api/profiles?${params}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setProfiles(d.profiles ?? []);
-        setSeriesList(d.seriesList ?? []);
-      });
+    (async () => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (series) params.set("series", series);
+      const res = await safeFetchJson(
+        `/api/profiles?${params}`,
+        fallbackProfilesResponse,
+        (d) =>
+          typeof d === "object" &&
+          d !== null &&
+          Array.isArray((d as { profiles?: unknown }).profiles)
+      );
+      setProfiles((res.data.profiles ?? []) as Profile[]);
+      setSeriesList(res.data.seriesList ?? []);
+      setDemoMode(res.demo);
+    })();
   }, [search, series]);
 
   return (
@@ -64,6 +78,7 @@ export default function ProfilesPage() {
       <PageHeader
         title="Profile Master"
         description="Manage aluminium extrusion profiles and specifications"
+        demoMode={demoMode}
       >
         <Button asChild>
           <Link href="/profiles/new">

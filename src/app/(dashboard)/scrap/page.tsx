@@ -31,12 +31,26 @@ import { SCRAP_REASONS } from "@/lib/constants";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2, Trash2 } from "lucide-react";
+import { safeFetchArray, safeFetchJson } from "@/lib/safe-fetch";
+import {
+  fallbackProfilesResponse,
+  fallbackScrapWastes,
+} from "@/lib/client-fallbacks";
 
 type FormData = z.infer<typeof scrapSchema>;
 
 export default function ScrapPage() {
-  const [profiles, setProfiles] = useState<{ id: string; profileCode: string; profileName: string; imageUrl?: string | null; currentStock: number }[]>([]);
-  const [entries, setEntries] = useState<Record<string, unknown>[]>([]);
+  const [profiles, setProfiles] = useState(
+    fallbackProfilesResponse.profiles as {
+      id: string;
+      profileCode: string;
+      profileName: string;
+      imageUrl?: string | null;
+      currentStock: number;
+    }[]
+  );
+  const [entries, setEntries] = useState<Record<string, unknown>[]>(fallbackScrapWastes);
+  const [demoMode, setDemoMode] = useState(false);
 
   const { register, handleSubmit, setValue, watch, reset, formState: { isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(scrapSchema),
@@ -45,12 +59,22 @@ export default function ScrapPage() {
 
   const profileId = watch("profileId");
 
-  const load = () => {
-    fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
-    fetch("/api/scrap").then((r) => r.json()).then(setEntries);
+  const load = async () => {
+    let demo = false;
+    const pRes = await safeFetchJson("/api/profiles", fallbackProfilesResponse, (d) =>
+      typeof d === "object" && d !== null && Array.isArray((d as { profiles?: unknown }).profiles)
+    );
+    setProfiles((pRes.data.profiles ?? []) as typeof profiles);
+    if (pRes.demo) demo = true;
+    const eRes = await safeFetchArray("/api/scrap", fallbackScrapWastes);
+    setEntries(eRes.data);
+    if (eRes.demo) demo = true;
+    setDemoMode(demo);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const onSubmit = async (data: FormData) => {
     const res = await fetch("/api/scrap", {
@@ -70,7 +94,11 @@ export default function ScrapPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Scrap & Waste" description="Track cutting waste, damaged material, and production loss" />
+      <PageHeader
+        title="Scrap & Waste"
+        description="Track cutting waste, damaged material, and production loss"
+        demoMode={demoMode}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">

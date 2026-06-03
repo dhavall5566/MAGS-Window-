@@ -38,6 +38,8 @@ import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Plus, Loader2, UserCog } from "lucide-react";
 import type { UserRole } from "@/lib/types";
+import { safeFetchArray } from "@/lib/safe-fetch";
+import { fallbackUsers } from "@/lib/client-fallbacks";
 
 type FormData = z.infer<typeof userSchema>;
 
@@ -51,7 +53,8 @@ interface UserRow {
 }
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserRow[]>([]);
+  const [users, setUsers] = useState<UserRow[]>(fallbackUsers as UserRow[]);
+  const [demoMode, setDemoMode] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
 
@@ -60,8 +63,14 @@ export default function UsersPage() {
     defaultValues: { role: "PRODUCTION_USER", status: "ACTIVE" },
   });
 
-  const load = () => fetch("/api/users").then((r) => r.json()).then(setUsers);
-  useEffect(() => { load(); }, []);
+  const load = async () => {
+    const res = await safeFetchArray<UserRow>("/api/users", fallbackUsers as UserRow[]);
+    setUsers(res.data);
+    setDemoMode(res.demo);
+  };
+  useEffect(() => {
+    load();
+  }, []);
 
   const openCreate = () => {
     setEditing(null);
@@ -105,7 +114,11 @@ export default function UsersPage() {
 
   return (
     <div>
-      <PageHeader title="User Management" description="Manage system users, roles, and access">
+      <PageHeader
+        title="User Management"
+        description="Manage system users, roles, and access"
+        demoMode={demoMode}
+      >
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />Add User
         </Button>

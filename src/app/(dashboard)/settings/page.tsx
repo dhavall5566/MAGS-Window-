@@ -14,24 +14,23 @@ import {
 import { useEffect, useState } from "react";
 import { formatDateTime } from "@/lib/utils";
 import { CompanyContact } from "@/components/brand/company-contact";
+import { safeFetchArray } from "@/lib/safe-fetch";
+import { fallbackActivityLogs } from "@/lib/client-fallbacks";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const [logs, setLogs] = useState<
-    {
-      action: string;
-      entity: string;
-      details?: string;
-      createdAt: string;
-      user: { name: string };
-    }[]
-  >([]);
+  const [logs, setLogs] = useState(fallbackActivityLogs);
+  const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
-    fetch("/api/activity-logs")
-      .then((r) => r.json())
-      .then(setLogs)
-      .catch(() => {});
+    (async () => {
+      const res = await safeFetchArray(
+        "/api/activity-logs",
+        fallbackActivityLogs
+      );
+      setLogs(res.data);
+      setDemoMode(res.demo);
+    })();
   }, []);
 
   return (
@@ -39,6 +38,7 @@ export default function SettingsPage() {
       <PageHeader
         title="Settings"
         description="Appearance, company contact, and system activity"
+        demoMode={demoMode}
       />
 
       <Card>
@@ -88,13 +88,14 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-sm font-medium">
                       {log.action} — {log.entity}
+                      <span className="text-muted-foreground font-normal">
+                        {" "}
+                        · {log.user?.name ?? "System"}
+                      </span>
                     </p>
                     {log.details && (
                       <p className="text-xs text-muted-foreground">{log.details}</p>
                     )}
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {log.user.name}
-                    </p>
                   </div>
                   <span className="whitespace-nowrap text-xs text-muted-foreground">
                     {formatDateTime(log.createdAt)}

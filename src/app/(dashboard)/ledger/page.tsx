@@ -26,26 +26,58 @@ import { TRANSACTION_TYPES } from "@/lib/constants";
 import { exportToCSV, exportToExcel } from "@/lib/export";
 import { formatDateTime, formatNumber } from "@/lib/utils";
 import { Download, FileSpreadsheet } from "lucide-react";
+import { safeFetchArray, safeFetchJson } from "@/lib/safe-fetch";
+import {
+  fallbackProfilesResponse,
+  fallbackStockLedgers,
+} from "@/lib/client-fallbacks";
 
 export default function LedgerPage() {
-  const [entries, setEntries] = useState<Record<string, unknown>[]>([]);
-  const [profiles, setProfiles] = useState<{ id: string; profileCode: string }[]>([]);
+  const [entries, setEntries] = useState<Record<string, unknown>[]>(fallbackStockLedgers);
+  const [profiles, setProfiles] = useState<{ id: string; profileCode: string }[]>(
+    fallbackProfilesResponse.profiles.map((p) => ({
+      id: p.id,
+      profileCode: p.profileCode,
+    }))
+  );
+  const [demoMode, setDemoMode] = useState(false);
   const [profileId, setProfileId] = useState("");
   const [type, setType] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
-  const load = () => {
+  const load = async () => {
     const params = new URLSearchParams();
     if (profileId) params.set("profileId", profileId);
     if (type) params.set("type", type);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
-    fetch(`/api/ledger?${params}`).then((r) => r.json()).then(setEntries);
+    const res = await safeFetchArray(
+      `/api/ledger?${params}`,
+      fallbackStockLedgers
+    );
+    setEntries(res.data);
+    if (res.demo) setDemoMode(true);
   };
 
   useEffect(() => {
-    fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
+    (async () => {
+      const res = await safeFetchJson(
+        "/api/profiles",
+        fallbackProfilesResponse,
+        (d) =>
+          typeof d === "object" &&
+          d !== null &&
+          Array.isArray((d as { profiles?: unknown }).profiles)
+      );
+      setProfiles(
+        (res.data.profiles ?? []).map((p) => ({
+          id: p.id,
+          profileCode: p.profileCode,
+        }))
+      );
+      if (res.demo) setDemoMode(true);
+    })();
   }, []);
 
   useEffect(() => {
@@ -76,7 +108,11 @@ export default function LedgerPage() {
 
   return (
     <div>
-      <PageHeader title="Stock Ledger" description="Complete audit trail of all inventory transactions">
+      <PageHeader
+        title="Stock Ledger"
+        description="Complete audit trail of all inventory transactions"
+        demoMode={demoMode}
+      >
         <Button variant="outline" onClick={() => exportToCSV(exportData, "stock-ledger")}>
           <Download className="mr-2 h-4 w-4" />CSV
         </Button>
