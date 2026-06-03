@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -33,9 +33,13 @@ export default function ChallanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [challan, setChallan] = useState<Record<string, unknown> | null>(null);
 
-  const load = () => fetch(`/api/challans/${id}`).then((r) => r.json()).then(setChallan);
+  const load = useCallback(() => {
+    fetch(`/api/challans/${id}`).then((r) => r.json()).then(setChallan);
+  }, [id]);
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (!challan) return <p className="p-6">Loading...</p>;
 

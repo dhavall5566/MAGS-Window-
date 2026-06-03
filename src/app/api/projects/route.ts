@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { profiles, ...data } = body as {
+  const { profiles } = body as {
     profiles?: { profileId: string; plannedQty: number; plannedLength?: number }[];
   };
 

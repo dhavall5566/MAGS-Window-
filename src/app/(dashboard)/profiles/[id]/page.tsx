@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -30,16 +30,16 @@ export default function ProfileDetailPage() {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  const load = useCallback(() => {
     fetch(`/api/profiles/${id}`)
       .then((r) => r.json())
       .then(setProfile)
       .finally(() => setLoading(false));
-  };
+  }, [id]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   const onSubmit = async (data: z.infer<typeof profileSchema>) => {
     const res = await fetch(`/api/profiles/${id}`, {

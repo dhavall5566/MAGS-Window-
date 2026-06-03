@@ -47,7 +47,7 @@ export default function ProfilesPage() {
   const [series, setSeries] = useState("");
   const [view, setView] = useState<"table" | "card">("table");
 
-  const load = () => {
+  useEffect(() => {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (series) params.set("series", series);
@@ -57,10 +57,6 @@ export default function ProfilesPage() {
         setProfiles(d.profiles ?? []);
         setSeriesList(d.seriesList ?? []);
       });
-  };
-
-  useEffect(() => {
-    load();
   }, [search, series]);
 
   return (

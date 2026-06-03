@@ -83,15 +83,31 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [challanMetrics, setChallanMetrics] = useState<ChallanMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/dashboard").then((r) => r.json()),
-      fetch("/api/challans/metrics").then((r) => r.json()),
+      fetch("/api/dashboard").then(async (r) => {
+        const json = await r.json();
+        if (!r.ok || json.error || !json.stats) {
+          throw new Error(json.error ?? "Failed to load dashboard");
+        }
+        return json as DashboardData;
+      }),
+      fetch("/api/challans/metrics").then(async (r) => {
+        const json = await r.json();
+        if (!r.ok || json.error) return null;
+        return json as ChallanMetrics;
+      }),
     ])
       .then(([dash, challan]) => {
         setData(dash);
         setChallanMetrics(challan);
+        setLoadError(null);
+      })
+      .catch((e) => {
+        setLoadError(e instanceof Error ? e.message : "Failed to load dashboard");
+        setData(null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -109,7 +125,16 @@ export default function DashboardPage() {
     );
   }
 
-  if (!data) return null;
+  if (loadError || !data?.stats) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Dashboard" description="Inventory and operations overview" />
+        <p className="text-sm text-destructive">
+          {loadError ?? "Dashboard data is unavailable. Please refresh the page."}
+        </p>
+      </div>
+    );
+  }
 
   const { stats, charts, recentTransactions, lowStockProfiles } = data;
 

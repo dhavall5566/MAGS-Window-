@@ -17,7 +17,8 @@ export async function PUT(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { password: _pw, ...data } = parsed.data;
+  const data = { ...parsed.data };
+  delete data.password;
 
   try {
     const user = db.updateUser(id, data);

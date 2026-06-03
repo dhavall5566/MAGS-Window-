@@ -28,16 +28,14 @@ import {
 } from "@/components/ui/table";
 import { ChallanItemsForm, ChallanLineItem } from "@/components/challans/challan-items-form";
 import { POWDER_COLORS } from "@/lib/constants";
-import { CHALLAN_STATUS_LABELS, CHALLAN_TYPE_LABELS, colorLabel } from "@/lib/challan-labels";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { CHALLAN_STATUS_LABELS, CHALLAN_TYPE_LABELS } from "@/lib/challan-labels";
+import { formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Truck,
   Paintbrush,
   RotateCcw,
-  FolderKanban,
   Building2,
-  FileText,
   Loader2,
   Eye,
 } from "lucide-react";

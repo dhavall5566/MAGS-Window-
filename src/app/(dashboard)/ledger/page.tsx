@@ -46,7 +46,11 @@ export default function LedgerPage() {
 
   useEffect(() => {
     fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
+  }, []);
+
+  useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial fetch only; filters use Apply
   }, []);
 
   type Entry = {

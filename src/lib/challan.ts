@@ -1,3 +1,4 @@
+import "server-only";
 import { mutate, read } from "./store";
 import type { ChallanType } from "./types";
 import { enrichChallan, getProfileById } from "./data-access";

@@ -15,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UploadButton } from "@/lib/uploadthing";
 import { Loader2 } from "lucide-react";
 import Image from "next/image";
 
@@ -110,21 +109,21 @@ export function ProfileForm({
               <Image src={imageUrl} alt="Profile" fill className="object-cover" />
             </div>
           )}
-          <UploadButton
-            endpoint="profileImage"
-            onClientUploadComplete={(res) => {
-              if (res?.[0]) setValue("imageUrl", res[0].url);
-            }}
+          <Input
+            placeholder="https://… image URL"
+            value={imageUrl ?? ""}
+            onChange={(e) => setValue("imageUrl", e.target.value || undefined)}
           />
         </div>
         <div className="space-y-3">
           <Label>Technical Drawing</Label>
           {drawingUrl && <p className="text-xs text-muted-foreground truncate">{drawingUrl}</p>}
-          <UploadButton
-            endpoint="technicalDrawing"
-            onClientUploadComplete={(res) => {
-              if (res?.[0]) setValue("technicalDrawingUrl", res[0].url);
-            }}
+          <Input
+            placeholder="https://… drawing or PDF URL"
+            value={drawingUrl ?? ""}
+            onChange={(e) =>
+              setValue("technicalDrawingUrl", e.target.value || undefined)
+            }
           />
         </div>
       </div>

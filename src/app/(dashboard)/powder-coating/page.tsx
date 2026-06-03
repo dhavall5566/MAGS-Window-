@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -60,15 +60,17 @@ function PowderCoatingPageContent() {
 
   const profileId = watch("profileId");
 
-  const load = () => {
+  const load = useCallback(() => {
     fetch("/api/profiles").then((r) => r.json()).then((d) => setProfiles(d.profiles ?? []));
     const params = new URLSearchParams();
     if (colorFilter) params.set("color", colorFilter);
     if (statusFilter) params.set("status", statusFilter);
     fetch(`/api/powder-coating?${params}`).then((r) => r.json()).then(setEntries);
-  };
+  }, [colorFilter, statusFilter]);
 
-  useEffect(() => { load(); }, [colorFilter, statusFilter]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onSubmit = async (data: FormData) => {
     const res = await fetch("/api/powder-coating", {
