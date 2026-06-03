@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMINISTRATOR
+  STORE_MANAGER
+  PRODUCTION_USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProfileStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PowderCoatingStatus {
+  PENDING
+  SENT_FOR_COATING
+  IN_PROCESS
+  COMPLETED
+  RETURNED
+}
+
+enum PowderCoatingColor {
+  WHITE
+  BLACK
+  MATT_BLACK
+  DARK_BRONZE
+  CHAMPAGNE_GOLD
+  WOOD_FINISH
+}
+
+enum ConsumptionUnit {
+  METER
+  FEET
+}
+
+enum TransactionType {
+  STOCK_INWARD
+  MATERIAL_CONSUMPTION
+  POWDER_COATING_TRANSFER
+  POWDER_COATING_RECEIPT
+  SCRAP_ENTRY
+  STOCK_ADJUSTMENT
+  CHALLAN_OUTWARD
+  CHALLAN_RETURN
+}
+
+enum ChallanType {
+  OUTWARD
+  POWDER_COATING
+  RETURN
+}
+
+enum ChallanStatus {
+  DRAFT
+  ISSUED
+  SENT_FOR_COATING
+  IN_PROCESS
+  RETURNED
+  COMPLETED
+  CANCELLED
+}
+
+enum ScrapReason {
+  CUTTING_WASTE
+  DAMAGED_MATERIAL
+  REJECTED_PROFILES
+  PRODUCTION_LOSS
+}
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  password  String
+  role      UserRole   @default(PRODUCTION_USER)
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  stockLedgers   StockLedger[]
+  activityLogs   ActivityLog[]
+  notifications  Notification[]
+}
+
+model Profile {
+  id                  String        @id @default(cuid())
+  profileCode         String        @unique
+  profileName         String
+  seriesName          String
+  weightPerMeter      Float
+  standardLength      Float         @default(6)
+  imageUrl            String?
+  technicalDrawingUrl String?
+  description         String?
+  status              ProfileStatus @default(ACTIVE)
+  currentStock        Float         @default(0)
+  powderCoatedStock   Float         @default(0)
+  lowStockThreshold   Float         @default(50)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  stockInwards     StockInward[]
+  consumptions     Consumption[]
+  powderCoatings   PowderCoating[]
+  scrapWastes      ScrapWaste[]
+  stockLedgers     StockLedger[]
+  challanItems     ChallanItem[]
+  projectProfiles  ProjectProfile[]
+}
+
+model StockInward {
+  id        String   @id @default(cuid())
+  profileId String
+  quantity  Float
+  length    Float?
+  weight    Float
+  date      DateTime @default(now())
+  remarks   String?
+  createdAt DateTime @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Consumption {
+  id               String          @id @default(cuid())
+  profileId        String
+  quantity         Float
+  unit             ConsumptionUnit @default(METER)
+  calculatedWeight Float
+  date             DateTime        @default(now())
+  remarks          String?
+  createdAt        DateTime        @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model PowderCoating {
+  id           String              @id @default(cuid())
+  profileId    String
+  quantity     Float
+  weight       Float
+  color        PowderCoatingColor
+  transferDate DateTime            @default(now())
+  status       PowderCoatingStatus @default(PENDING)
+  remarks      String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model ScrapWaste {
+  id        String      @id @default(cuid())
+  profileId String
+  quantity  Float
+  reason    ScrapReason
+  remarks   String?
+  date      DateTime    @default(now())
+  createdAt DateTime    @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model StockLedger {
+  id              String          @id @default(cuid())
+  profileId       String
+  transactionType TransactionType
+  quantity        Float
+  balance         Float
+  userId          String
+  date            DateTime        @default(now())
+  remarks         String?
+  createdAt       DateTime        @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  type      String   @default("info")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Vendor {
+  id            String        @id @default(cuid())
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  gstin         String?
+  status        ProfileStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  challans Challan[]
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  projectCode String        @unique
+  projectName String
+  clientName  String?
+  siteAddress String?
+  status      ProfileStatus @default(ACTIVE)
+  startDate   DateTime?
+  endDate     DateTime?
+  remarks     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  profiles ProjectProfile[]
+  challans Challan[]
+}
+
+model ProjectProfile {
+  id            String  @id @default(cuid())
+  projectId     String
+  profileId     String
+  plannedQty    Float   @default(0)
+  plannedLength Float?
+  remarks       String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, profileId])
+}
+
+model Challan {
+  id                 String               @id @default(cuid())
+  challanNumber      String               @unique
+  type               ChallanType
+  status             ChallanStatus        @default(DRAFT)
+  vendorId           String?
+  projectId          String?
+  parentChallanId    String?
+  color              PowderCoatingColor?
+  issueDate          DateTime             @default(now())
+  expectedReturnDate DateTime?
+  receivedDate       DateTime?
+  vehicleNo          String?
+  driverName         String?
+  remarks            String?
+  verifiedToken      String               @unique @default(cuid())
+  preparedBy         String?
+  approvedBy         String?
+  receivedBy         String?
+  totalWeight        Float                @default(0)
+  totalQty           Float                @default(0)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  vendor        Vendor?       @relation(fields: [vendorId], references: [id])
+  project       Project?      @relation(fields: [projectId], references: [id])
+  parentChallan Challan?      @relation("ChallanChain", fields: [parentChallanId], references: [id])
+  childChallans Challan[]     @relation("ChallanChain")
+  items         ChallanItem[]
+}
+
+model ChallanItem {
+  id        String  @id @default(cuid())
+  challanId String
+  profileId String
+  quantity  Float
+  length    Float?
+  weight    Float
+  remarks   String?
+
+  challan Challan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
