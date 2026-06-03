@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { consumptionSchema } from "@/lib/validations";
 import { processConsumption } from "@/lib/stock";
 import { calculateWeight } from "@/lib/utils";
-import { read } from "@/lib/store";
+import { read } from "@/lib/mock-store";
 
 export async function GET() {
   const { error } = await requireAuth();

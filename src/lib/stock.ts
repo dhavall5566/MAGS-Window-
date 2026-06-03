@@ -1,5 +1,4 @@
-import "server-only";
-import { mutate, read } from "./store";
+import { mutate, read } from "./mock-store";
 import type { TransactionType, UserRole } from "./types";
 import { getProfileById } from "./data-access";
 

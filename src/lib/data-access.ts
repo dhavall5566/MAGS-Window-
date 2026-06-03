@@ -1,5 +1,4 @@
-import "server-only";
-import { read, mutate, generateId, now } from "./store";
+import { read, mutate, generateId, now } from "./mock-store";
 import type {
   Database,
   Profile,

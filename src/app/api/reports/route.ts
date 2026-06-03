@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { read } from "@/lib/store";
+import { read } from "@/lib/mock-store";
 import { getProfileById } from "@/lib/data-access";
 import { requireAuth } from "@/lib/api-auth";
 
