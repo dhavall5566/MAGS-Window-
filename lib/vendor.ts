@@ -1,0 +1,97 @@
+import type { Challan, Vendor, VendorType } from "@/types";
+import { VENDOR_TYPE_OPTIONS } from "@/lib/vendor-form";
+
+export const MAGS_VENDOR_ID = "ven-021";
+
+export function resolveVendorType(
+  vendor: Pick<Vendor, "id" | "partyName" | "vendorType">
+): VendorType {
+  if (vendor.vendorType) return vendor.vendorType;
+  if (
+    vendor.id === MAGS_VENDOR_ID ||
+    vendor.partyName.trim().toUpperCase() === "MAGS"
+  ) {
+    return "powder_coating";
+  }
+  return "delivery";
+}
+
+export function getVendorTypeLabel(vendorType: VendorType): string {
+  return VENDOR_TYPE_OPTIONS.find((option) => option.value === vendorType)?.label ?? vendorType;
+}
+
+export function getVendorsForChallanType(
+  vendors: Vendor[],
+  challanType: "outward" | "powder_coating" | "return"
+): Vendor[] {
+  const vendorType: VendorType =
+    challanType === "powder_coating" ? "powder_coating" : "delivery";
+  return vendors.filter((vendor) => vendor.vendorType === vendorType);
+}
+
+export function formatPartyAddress(address: string | undefined): string {
+  return (address ?? "").replace(/^Address:\s*/i, "").trim();
+}
+
+export function findVendorByPartyName(
+  vendors: Vendor[],
+  partyName: string
+): Vendor | undefined {
+  const normalized = partyName.trim().toLowerCase();
+  return vendors.find((vendor) => vendor.partyName.trim().toLowerCase() === normalized);
+}
+
+export function getVendorChallanDetails(vendor: Vendor): {
+  vendorName: string;
+  vendorAddress: string;
+  vendorPersonName: string;
+  vendorContact: string;
+  vendorGstNo: string;
+} {
+  return {
+    vendorName: vendor.partyName,
+    vendorAddress: formatPartyAddress(vendor.partyAddress),
+    vendorPersonName: vendor.personName?.trim() ?? "",
+    vendorContact: vendor.phoneNo?.trim() ?? "",
+    vendorGstNo: vendor.gstNo?.trim() ?? "",
+  };
+}
+
+export function enrichChallanVendorDetails<T extends Challan>(
+  challan: T,
+  vendors: Vendor[]
+): T {
+  const vendor = findVendorByPartyName(vendors, challan.vendorName);
+  if (!vendor) {
+    return {
+      ...challan,
+      vendorAddress: formatPartyAddress(challan.vendorAddress),
+      vendorPersonName: challan.vendorPersonName ?? "",
+      vendorContact: challan.vendorContact ?? "",
+      vendorGstNo: challan.vendorGstNo ?? "",
+    };
+  }
+
+  return {
+    ...challan,
+    ...getVendorChallanDetails(vendor),
+  };
+}
+
+export function getVendorPartyNames(vendors: Vendor[]): string[] {
+  return [
+    ...new Set(vendors.map((vendor) => vendor.partyName.trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b));
+}
+
+export function normalizeVendor(vendor: Vendor): Vendor {
+  return {
+    ...vendor,
+    partyAddress: formatPartyAddress(vendor.partyAddress),
+    personName: vendor.personName ?? "",
+    phoneNo: vendor.phoneNo ?? "",
+    email: vendor.email?.trim() ?? "",
+    gstNo: vendor.gstNo?.trim() ?? "",
+    vendorType: resolveVendorType(vendor),
+  };
+}

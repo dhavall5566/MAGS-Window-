@@ -1,0 +1,262 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Eye, FileDown, Trash2, BarChart3, Package, Factory, Recycle, SprayCan } from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { DataTable } from "@/components/shared/data-table";
+import { CreateReportDialog } from "@/components/reports/create-report-dialog";
+import { ReportChartPanel } from "@/components/reports/report-chart-panel";
+import { ReportPreviewDialog } from "@/components/reports/report-preview-dialog";
+import { TableRowActions } from "@/components/shared/table-row-actions";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { formatDate, formatNumber } from "@/lib/utils";
+import { fetchJson } from "@/lib/fetch-json";
+import type { ReportApiData } from "@/lib/report-content";
+import { getReportTypeLabel } from "@/lib/report-form";
+import { useAppStore } from "@/lib/store";
+import type { Report } from "@/types";
+
+export default function ReportsPage() {
+  const [data, setData] = useState<Record<string, unknown>>({});
+  const [previewReport, setPreviewReport] = useState<Report | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [chartReport, setChartReport] = useState<Report | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const reports = useAppStore((s) => s.reports);
+  const addReport = useAppStore((s) => s.addReport);
+  const deleteReport = useAppStore((s) => s.deleteReport);
+
+  useEffect(() => {
+    fetchJson<Record<string, unknown>>("/api/reports").then(setData);
+  }, []);
+
+  const summary = (data.summary ?? {}) as Record<string, number>;
+  const monthly = (data.monthlyStockMovement ?? []) as ReportApiData["monthlyStockMovement"];
+  const consumption = (data.consumptionTrends ?? []) as ReportApiData["consumptionTrends"];
+  const colors = (data.colorDistribution ?? []) as ReportApiData["colorDistribution"];
+
+  const sortedReports = useMemo(
+    () =>
+      [...(reports ?? [])].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ),
+    [reports]
+  );
+
+  const reportApiData = useMemo<ReportApiData>(
+    () => ({
+      monthlyStockMovement: monthly,
+      consumptionTrends: consumption,
+      colorDistribution: colors,
+      inventoryByCategory: (data.inventoryByCategory ?? []) as {
+        category: string;
+        stock: number;
+        value: number;
+      }[],
+      summary,
+    }),
+    [monthly, consumption, colors, data.inventoryByCategory, summary]
+  );
+
+  const handleDownloadReport = useCallback(
+    async (report: Report) => {
+      setDownloadingId(report.id);
+      try {
+        const { generateReportPDF } = await import("@/lib/report-pdf");
+        await generateReportPDF(report, reportApiData);
+      } catch (error) {
+        console.error("Report PDF download failed:", error);
+        alert("Could not generate the report PDF. Please refresh the page and try again.");
+      } finally {
+        setDownloadingId(null);
+      }
+    },
+    [reportApiData]
+  );
+
+  const handleToggleChart = useCallback((report: Report) => {
+    setChartReport((current) => (current?.id === report.id ? null : report));
+  }, []);
+
+  const reportColumns = [
+    {
+      key: "reportNo",
+      header: "Report No",
+      className: "whitespace-nowrap font-mono text-xs font-medium",
+      align: "left" as const,
+    },
+    {
+      key: "name",
+      header: "Name",
+      className: "min-w-[160px] font-medium",
+      align: "left" as const,
+    },
+    {
+      key: "type",
+      header: "Type",
+      className: "whitespace-nowrap",
+      align: "left" as const,
+      sortValue: (row: Report) => getReportTypeLabel(row.type),
+      render: (row: Report) => (
+        <Badge variant="outline" className="text-xs">
+          {getReportTypeLabel(row.type)}
+        </Badge>
+      ),
+    },
+    {
+      key: "period",
+      header: "Period",
+      className: "whitespace-nowrap text-muted-foreground",
+      align: "left" as const,
+      sortValue: (row: Report) => row.dateFrom,
+      render: (row: Report) => `${formatDate(row.dateFrom)} – ${formatDate(row.dateTo)}`,
+    },
+    {
+      key: "createdAt",
+      header: "Created",
+      className: "whitespace-nowrap text-muted-foreground",
+      align: "left" as const,
+      render: (row: Report) => formatDate(row.createdAt),
+    },
+    {
+      key: "status",
+      header: "Status",
+      className: "whitespace-nowrap",
+      align: "left" as const,
+      render: () => (
+        <Badge variant="success" className="whitespace-nowrap px-2.5 py-0.5 text-xs">
+          Generated
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "whitespace-nowrap",
+      align: "right" as const,
+      sticky: true,
+      render: (row: Report) => (
+        <TableRowActions>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={chartReport?.id === row.id ? "h-8 w-8 text-primary" : "h-8 w-8"}
+            aria-label="View chart"
+            onClick={() => handleToggleChart(row)}
+          >
+            <BarChart3 className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Preview report"
+            onClick={() => {
+              setPreviewReport(row);
+              setPreviewOpen(true);
+            }}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Download PDF"
+            disabled={downloadingId === row.id}
+            onClick={() => handleDownloadReport(row)}
+          >
+            <FileDown className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            aria-label="Delete report"
+            onClick={() => {
+              if (confirm(`Delete report ${row.reportNo}?`)) {
+                deleteReport(row.id);
+                if (chartReport?.id === row.id) setChartReport(null);
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </TableRowActions>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <PageHeader title="Reports" description="Analytics and operational reports for management">
+        <CreateReportDialog existingReports={reports ?? []} onSave={addReport} />
+      </PageHeader>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+        <StatCard
+          title="Total Inward"
+          value={`${formatNumber(summary.totalInwardKg ?? 0)} kg`}
+          icon={Package}
+        />
+        <StatCard
+          title="Total Consumption"
+          value={`${formatNumber(summary.totalConsumptionKg ?? 0)} kg`}
+          icon={Factory}
+        />
+        <StatCard
+          title="Scrap Generated"
+          value={`${formatNumber(summary.totalScrapKg ?? 0)} kg`}
+          icon={Recycle}
+          variant="danger"
+        />
+        <StatCard
+          title="Coating Efficiency"
+          value={`${summary.coatingEfficiency ?? 0}%`}
+          icon={SprayCan}
+          variant="success"
+        />
+      </div>
+
+      <DataTable
+        tableId="reports"
+        data={sortedReports}
+        columns={reportColumns}
+        searchFilter={(row, query) => {
+          const q = query.toLowerCase();
+          return (
+            row.reportNo.toLowerCase().includes(q) ||
+            row.name.toLowerCase().includes(q) ||
+            getReportTypeLabel(row.type).toLowerCase().includes(q)
+          );
+        }}
+        searchPlaceholder="Search report no, name, or type..."
+        emptyMessage="No reports yet. Click Create Report to generate one."
+      />
+
+      {chartReport && (
+        <ReportChartPanel
+          report={chartReport}
+          reportData={reportApiData}
+          onClose={() => setChartReport(null)}
+        />
+      )}
+
+      <ReportPreviewDialog
+        report={previewReport}
+        reportData={reportApiData}
+        open={previewOpen}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open) setPreviewReport(null);
+        }}
+      />
+    </div>
+  );
+}
