@@ -79,6 +79,8 @@ export function CreateReportDialog({ existingReports, onSave }: CreateReportDial
       onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
       title="Create Report"
       description="Generate an analytics report for a selected date range and report type."
+      contentClassName="min-h-[35rem]"
+      bodyClassName="pb-6"
       trigger={
         <Button>
           <Plus className="h-4 w-4" />
@@ -115,6 +117,7 @@ export function CreateReportDialog({ existingReports, onSave }: CreateReportDial
               error={resolveFieldError(isSubmitted, errors.type)}
             >
               <SearchableSelect
+                searchable={false}
                 value={watch("type")}
                 onValueChange={(value) =>
                   setValue("type", value as ReportFormData["type"], { shouldValidate: isSubmitted })
@@ -124,7 +127,6 @@ export function CreateReportDialog({ existingReports, onSave }: CreateReportDial
                   label: entry.label,
                 }))}
                 placeholder="Select report type"
-                searchPlaceholder="Search report type…"
                 aria-invalid={fieldInvalid(isSubmitted, errors.type)}
               />
             </FormField>

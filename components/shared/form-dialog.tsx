@@ -33,6 +33,14 @@ interface FormDialogProps {
   contentClassName?: string;
 }
 
+/** Ignore clicks on portaled popovers/selects so the dialog stays open. */
+function ignorePortaledLayerDismiss(event: Event) {
+  const target = event.target;
+  if (target instanceof Element && target.closest("[data-radix-popper-content-wrapper]")) {
+    event.preventDefault();
+  }
+}
+
 /** Consistent dialog shell: fixed header, scrollable body, footer bar. */
 export function FormDialog({
   open,
@@ -66,6 +74,8 @@ export function FormDialog({
           sizeClasses[size],
           contentClassName
         )}
+        onPointerDownOutside={ignorePortaledLayerDismiss}
+        onInteractOutside={ignorePortaledLayerDismiss}
       >
         <div className="border-b px-6 py-5 pr-12">
           <DialogHeader>
