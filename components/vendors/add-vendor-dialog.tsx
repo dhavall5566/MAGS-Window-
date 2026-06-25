@@ -7,14 +7,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { vendorFormSchema, type VendorFormData } from "@/lib/vendor-form";
@@ -70,22 +63,28 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}>
-      <DialogTrigger asChild>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
+      title="Add New Vendor"
+      description="Register a delivery or powder coating vendor for challans and stock operations."
+      trigger={
         <Button>
           <Plus className="h-4 w-4" />
           Add Vendor
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add New Vendor</DialogTitle>
-          <DialogDescription>
-            Register a delivery or powder coating vendor for challans and stock operations.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <FormSection title="Vendor classification">
+      }
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={closeDialog}
+          submitLabel="Save Vendor"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+        />
+      }
+    >
+      <FormSection title="Vendor classification">
             <VendorTypeSelect
               value={watch("vendorType")}
               onChange={(value) => setValue("vendorType", value, { shouldValidate: isSubmitted })}
@@ -162,15 +161,6 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
               </FormField>
             </div>
           </FormSection>
-
-          <FormDialogActions
-            onCancel={closeDialog}
-            submitLabel="Save Vendor"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 }

@@ -6,14 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { seriesFormSchema, type SeriesFormData } from "@/lib/series-form";
@@ -57,23 +50,30 @@ export function AddSeriesDialog({ onSave }: AddSeriesDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}>
-      <DialogTrigger asChild>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
+      size="md"
+      title="Add New Series"
+      description="Define a series code used when creating profiles (e.g. MS + 150 → MS150)."
+      trigger={
         <Button>
           <Plus className="h-4 w-4" />
           Add Series
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add New Series</DialogTitle>
-          <DialogDescription>
-            Define a series code used when creating profiles (e.g. MS + 150 → MS150).
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <FormSection title="Series identity">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      }
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={closeDialog}
+          submitLabel="Save Series"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+        />
+      }
+    >
+      <FormSection title="Series identity">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 label="Series Name"
                 htmlFor="name"
@@ -117,15 +117,7 @@ export function AddSeriesDialog({ onSave }: AddSeriesDialogProps) {
                 />
               </FormField>
             </div>
-          </FormSection>
-          <FormDialogActions
-            onCancel={closeDialog}
-            submitLabel="Save Series"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+      </FormSection>
+    </FormDialog>
   );
 }

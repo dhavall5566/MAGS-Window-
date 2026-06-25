@@ -6,15 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import {
@@ -81,22 +74,28 @@ export function CreateReportDialog({ existingReports, onSave }: CreateReportDial
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}>
-      <DialogTrigger asChild>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
+      title="Create Report"
+      description="Generate an analytics report for a selected date range and report type."
+      trigger={
         <Button>
           <Plus className="h-4 w-4" />
           Create Report
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Create Report</DialogTitle>
-          <DialogDescription>
-            Generate an analytics report for a selected date range and report type.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <FormSection title="Report configuration">
+      }
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={closeDialog}
+          submitLabel="Generate Report"
+          loadingLabel="Generating"
+          isSubmitting={isSubmitting}
+        />
+      }
+    >
+      <FormSection title="Report configuration">
             <FormField
               label="Report Name"
               htmlFor="reportName"
@@ -157,15 +156,7 @@ export function CreateReportDialog({ existingReports, onSave }: CreateReportDial
                 />
               </FormField>
             </div>
-          </FormSection>
-          <FormDialogActions
-            onCancel={closeDialog}
-            submitLabel="Generate Report"
-            loadingLabel="Generating"
-            isSubmitting={isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+      </FormSection>
+    </FormDialog>
   );
 }

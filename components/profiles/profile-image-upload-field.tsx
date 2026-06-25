@@ -6,12 +6,15 @@ import { Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { uploadProfileImage } from "@/lib/upload-image";
+import { cn } from "@/lib/utils";
 
 type ProfileImageUploadFieldProps = {
   id?: string;
   label?: string;
   value: string | null;
   onChange: (url: string | null) => void;
+  layout?: "inline" | "card";
+  className?: string;
 };
 
 export function ProfileImageUploadField({
@@ -19,6 +22,8 @@ export function ProfileImageUploadField({
   label = "Profile Image",
   value,
   onChange,
+  layout = "inline",
+  className,
 }: ProfileImageUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -49,27 +54,39 @@ export function ProfileImageUploadField({
     }
   };
 
+  const isCard = layout === "card";
+
   return (
-    <div className="space-y-2 col-span-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-4">
+    <div className={cn("space-y-2", className)}>
+      <Label htmlFor={id} className="text-sm font-medium">
+        {label}
+        <span className="ml-1.5 text-xs font-normal text-muted-foreground">(optional)</span>
+      </Label>
+      <div className={cn("flex gap-3", isCard ? "flex-col items-stretch" : "items-center")}>
         <label
           htmlFor={id}
-          className="form-field relative flex h-20 w-28 cursor-pointer flex-col items-center justify-center rounded-lg border-dashed hover:bg-muted/50"
+          className={cn(
+            "form-field relative flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 transition-colors hover:bg-muted/40",
+            isCard ? "min-h-[180px] w-full" : "h-20 w-28"
+          )}
         >
           {value ? (
             <Image
               src={value}
               alt="Profile preview"
-              width={112}
-              height={80}
-              className="h-full w-full rounded-lg object-cover"
+              width={isCard ? 320 : 112}
+              height={isCard ? 180 : 80}
+              className={cn(
+                "rounded-lg object-contain",
+                isCard ? "h-full max-h-[168px] w-full p-2" : "h-full w-full object-cover"
+              )}
               unoptimized
             />
           ) : (
             <>
               <Upload className="h-5 w-5 text-muted-foreground" />
-              <span className="mt-1 text-xs text-muted-foreground">Upload image</span>
+              <span className="mt-2 text-xs text-muted-foreground">Click to upload image</span>
+              <span className="mt-0.5 text-[11px] text-muted-foreground/80">PNG, JPG up to 5MB</span>
             </>
           )}
           {uploading && (
@@ -93,6 +110,7 @@ export function ProfileImageUploadField({
             variant="outline"
             size="sm"
             disabled={uploading}
+            className={cn(isCard && "self-start")}
             onClick={() => {
               setError(null);
               onChange(null);
@@ -102,7 +120,11 @@ export function ProfileImageUploadField({
           </Button>
         )}
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
       {uploading && (
         <p className="text-xs text-muted-foreground">Uploading to ImageKit...</p>
       )}

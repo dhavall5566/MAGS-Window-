@@ -24,7 +24,7 @@ export function FormDialogActions({
   const label = isSubmitting ? (loadingLabel ?? `${submitLabel}…`) : submitLabel;
 
   return (
-    <DialogFooter className="gap-2 sm:gap-0">
+    <DialogFooter className="border-0 bg-transparent p-0">
       <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
         {cancelLabel}
       </Button>

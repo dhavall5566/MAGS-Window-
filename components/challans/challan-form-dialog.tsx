@@ -9,14 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { fieldInvalid, resolveFieldError } from "@/lib/form-utils";
@@ -505,23 +498,29 @@ export function ChallanFormDialog({
           : "New Powder Coating Challan";
 
   const dialog = (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {showTrigger && !isEdit && (
-        <DialogTrigger asChild>
+    <FormDialog
+      open={open}
+      onOpenChange={setOpen}
+      title={title}
+      description="Complete challan details, vendor information, and line items before saving."
+      trigger={
+        showTrigger && !isEdit ? (
           <Button size="sm">
             <Plus className="h-4 w-4" />
             {title.replace("New ", "")}
           </Button>
-        </DialogTrigger>
-      )}
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Complete challan details, vendor information, and line items before saving.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        ) : undefined
+      }
+      onSubmit={form.handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => setOpen(false)}
+          submitLabel={isEdit ? "Save Changes" : "Create Challan"}
+          loadingLabel="Saving"
+          isSubmitting={form.formState.isSubmitting}
+        />
+      }
+    >
           <FormSection title="Challan details">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -809,16 +808,7 @@ export function ChallanFormDialog({
             <p className="text-xs text-destructive">{String(form.formState.errors.items.message)}</p>
           )}
           </FormSection>
-
-          <FormDialogActions
-            onCancel={() => setOpen(false)}
-            submitLabel={isEdit ? "Save Changes" : "Create Challan"}
-            loadingLabel="Saving"
-            isSubmitting={form.formState.isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 
   return dialog;

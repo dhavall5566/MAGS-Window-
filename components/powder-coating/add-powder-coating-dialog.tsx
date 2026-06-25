@@ -7,14 +7,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
@@ -135,27 +128,33 @@ export function AddPowderCoatingDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) resetForm();
       }}
-    >
-      <DialogTrigger asChild>
+      title="Add Powder Coating"
+      description="Record a powder coating batch sent to a vendor with color and weight details."
+      trigger={
         <Button>
           <Plus className="h-4 w-4" />
           Add Powder Coating
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add Powder Coating</DialogTitle>
-          <DialogDescription>
-            Record a powder coating batch sent to a vendor with color and weight details.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      }
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => {
+            setOpen(false);
+            reset();
+          }}
+          submitLabel="Save Powder Coating"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+        />
+      }
+    >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="batchNo">Batch No</Label>
@@ -258,18 +257,6 @@ export function AddPowderCoatingDialog({
               <Input id="returnDate" type="date" {...register("returnDate")} />
             </div>
           </div>
-
-          <FormDialogActions
-            onCancel={() => {
-              setOpen(false);
-              reset();
-            }}
-            submitLabel="Save Powder Coating"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 }

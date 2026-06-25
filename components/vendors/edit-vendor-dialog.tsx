@@ -5,13 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { vendorFormSchema, type VendorFormData } from "@/lib/vendor-form";
@@ -90,14 +84,23 @@ export function EditVendorDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Edit Vendor</DialogTitle>
-          <DialogDescription>Update vendor details used on challans and deliveries.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <FormSection title="Vendor classification">
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Edit Vendor"
+      description="Update vendor details used on challans and deliveries."
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => onOpenChange(false)}
+          submitLabel="Save Changes"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+          disabled={!vendor}
+        />
+      }
+    >
+      <FormSection title="Vendor classification">
             <VendorTypeSelect
               id="edit-vendorType"
               value={watch("vendorType")}
@@ -167,16 +170,6 @@ export function EditVendorDialog({
               </FormField>
             </div>
           </FormSection>
-
-          <FormDialogActions
-            onCancel={() => onOpenChange(false)}
-            submitLabel="Save Changes"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-            disabled={!vendor}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 }

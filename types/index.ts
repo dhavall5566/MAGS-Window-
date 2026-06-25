@@ -214,6 +214,34 @@ export interface ReturnChallan extends ChallanVendorDetails {
 
 export type Challan = OutwardChallan | PowderCoatingChallan | ReturnChallan;
 
+export interface PurchaseOrderItem {
+  profileCode: string;
+  profileName: string;
+  profileImage: string;
+  /** Weight per running meter (KG/MTR). */
+  kgPerMeter: number;
+  /** Unit of measure for length, e.g. "MM". */
+  uom: string;
+  /** Profile length in millimeters. */
+  length: number;
+  qty: number;
+  /** Total ordered weight in kg. */
+  totalWeightKg: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  /** Document number (shown as "D.C. No" on the PO). */
+  poNumber: string;
+  date: string;
+  vendorName: string;
+  vendorAddress: string;
+  /** Vehicle number (shown as "V. Number"). */
+  vehicleNumber?: string;
+  remarks?: string;
+  items: PurchaseOrderItem[];
+}
+
 export interface StockLedgerEntry {
   id: string;
   date: string;

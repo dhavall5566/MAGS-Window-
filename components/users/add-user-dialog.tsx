@@ -6,15 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import {
@@ -83,22 +76,28 @@ export function AddUserDialog({ existingEmails, onSave }: AddUserDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}>
-      <DialogTrigger asChild>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
+      title="Add New User"
+      description="Create a system user with role-based access for MAGS operations."
+      trigger={
         <Button>
           <Plus className="h-4 w-4" />
           Add User
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add New User</DialogTitle>
-          <DialogDescription>
-            Create a system user with role-based access for MAGS operations.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <FormSection title="User details">
+      }
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={closeDialog}
+          submitLabel="Save User"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+        />
+      }
+    >
+      <FormSection title="User details">
             <FormField
               label="Full Name"
               htmlFor="name"
@@ -185,15 +184,6 @@ export function AddUserDialog({ existingEmails, onSave }: AddUserDialogProps) {
               />
             </FormField>
           </FormSection>
-
-          <FormDialogActions
-            onCancel={closeDialog}
-            submitLabel="Save User"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 }

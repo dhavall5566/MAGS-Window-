@@ -5,14 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { StockInwardFormFields } from "@/components/stock-inward/stock-inward-form-fields";
 import {
@@ -84,45 +77,40 @@ export function AddStockInwardDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) resetForm();
       }}
-    >
-      <DialogTrigger asChild>
+      title="Add Stock Inward"
+      description="Record incoming aluminium profile stock with weight, length, and supplier details."
+      trigger={
         <Button>
           <Plus className="h-4 w-4" />
           Add Stock
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add Stock Inward</DialogTitle>
-          <DialogDescription>
-            Record incoming aluminium profile stock with weight, length, and supplier details.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <StockInwardFormFields
-            mode="add"
-            form={form}
-            profiles={profiles}
-            isSubmitted={isSubmitted}
-          />
-          <FormDialogActions
-            onCancel={() => {
-              setOpen(false);
-              resetForm();
-            }}
-            submitLabel={lengthRowCount > 1 ? `Save ${lengthRowCount} Entries` : "Save Stock"}
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-            disabled={profiles.length === 0}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+      }
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => {
+            setOpen(false);
+            resetForm();
+          }}
+          submitLabel={lengthRowCount > 1 ? `Save ${lengthRowCount} Entries` : "Save Stock"}
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+          disabled={profiles.length === 0}
+        />
+      }
+    >
+      <StockInwardFormFields
+        mode="add"
+        form={form}
+        profiles={profiles}
+        isSubmitted={isSubmitted}
+      />
+    </FormDialog>
   );
 }

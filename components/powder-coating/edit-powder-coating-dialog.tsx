@@ -3,16 +3,9 @@
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
@@ -157,13 +150,21 @@ export function EditPowderCoatingDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Powder Coating</DialogTitle>
-          <DialogDescription>Update coating batch details, vendor, and dates.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Edit Powder Coating"
+      description="Update coating batch details, vendor, and dates."
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => onOpenChange(false)}
+          submitLabel="Save Changes"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+        />
+      }
+    >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="edit-batchNo">Batch No</Label>
@@ -260,15 +261,6 @@ export function EditPowderCoatingDialog({
               <Input id="edit-returnDate" type="date" {...register("returnDate")} />
             </div>
           </div>
-
-          <FormDialogActions
-            onCancel={() => onOpenChange(false)}
-            submitLabel="Save Changes"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 }

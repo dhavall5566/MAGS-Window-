@@ -15,7 +15,7 @@ export interface SearchableSelectOption {
 }
 
 export function stringSelectOptions(
-  values: string[],
+  values: readonly string[],
   className?: string
 ): SearchableSelectOption[] {
   return values.map((value) => ({ value, label: value, className }));
@@ -56,6 +56,8 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [container, setContainer] = React.useState<HTMLElement | null>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   const selected = options.find((option) => option.value === value);
@@ -75,8 +77,8 @@ export function SearchableSelect({
       setQuery("");
       return;
     }
-    const timer = window.setTimeout(() => searchRef.current?.focus(), 50);
-    return () => window.clearTimeout(timer);
+    const dialog = triggerRef.current?.closest('[role="dialog"]');
+    setContainer(dialog instanceof HTMLElement ? dialog : null);
   }, [open]);
 
   const handleSelect = (next: string) => {
@@ -85,9 +87,10 @@ export function SearchableSelect({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           id={id}
           variant="outline"
@@ -105,22 +108,28 @@ export function SearchableSelect({
             {triggerPrefix}
             <span className="truncate">{selected?.label ?? placeholder}</span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          <ChevronDown
+            className={cn("h-4 w-4 shrink-0 opacity-50 transition-transform", open && "rotate-180")}
+          />
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        container={container}
         align={align}
         side={side}
         sideOffset={6}
-        collisionPadding={12}
+        collisionPadding={16}
         avoidCollisions
         className={cn(
-          "z-[200] w-[max(var(--radix-popover-trigger-width),14rem)] min-w-[14rem] p-0",
+          "flex max-h-72 w-[max(var(--radix-popover-trigger-width),14rem)] min-w-[14rem] flex-col overflow-hidden p-0",
           contentClassName
         )}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          searchRef.current?.focus();
+        }}
       >
-        <div className="sticky top-0 z-10 border-b bg-popover p-2">
+        <div className="shrink-0 border-b bg-popover p-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -128,18 +137,18 @@ export function SearchableSelect({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={searchPlaceholder}
-              className="h-9 pl-8"
+              className="h-9 bg-background pl-8"
               aria-label={searchPlaceholder}
               onKeyDown={(event) => {
-                event.stopPropagation();
                 if (event.key === "Escape") {
+                  event.preventDefault();
                   setOpen(false);
                 }
               }}
             />
           </div>
         </div>
-        <div className="max-h-60 overflow-y-auto p-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
           {filtered.length === 0 ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
           ) : (
@@ -151,7 +160,7 @@ export function SearchableSelect({
                   type="button"
                   disabled={option.disabled}
                   className={cn(
-                    "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50",
+                    "relative flex w-full cursor-pointer select-none items-center rounded-sm py-2 pl-8 pr-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50",
                     option.className
                   )}
                   onClick={() => handleSelect(option.value)}

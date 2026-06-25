@@ -38,3 +38,12 @@ export const DELIVERY_CHALLAN = {
   gstNo: "24ACDFM8116G1ZE",
   signatoryLine: "For, Mags windows door and façade",
 } as const;
+
+/** Purchase Order PDF branding (issuing company) */
+export const PURCHASE_ORDER = {
+  companyName: "MAAHI ALUGLAZE SYSTEM",
+  addressLine:
+    "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3, Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
+  email: "mags.brijesh@gmail.com",
+  website: "www.mags07.com",
+} as const;

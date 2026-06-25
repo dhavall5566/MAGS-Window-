@@ -15,6 +15,7 @@ import {
   BookOpen,
   Recycle,
   ClipboardList,
+  FileText,
 } from "lucide-react";
 
 export interface NavMenuGroup {
@@ -58,6 +59,13 @@ export const defaultNavItems: NavItemConfig[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perm: "dashboard" },
   { href: "/profiles", label: "Profile Master", icon: Boxes, perm: "profiles", groupId: "profiles" },
   { href: "/series-name", label: "Series Name", icon: Layers, perm: "series", groupId: "profiles" },
+  {
+    href: "/purchase-orders",
+    label: "Purchase Orders",
+    icon: FileText,
+    perm: "stock",
+    groupId: "inventory",
+  },
   {
     href: "/stock-inward",
     label: "Stock Inward",

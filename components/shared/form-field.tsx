@@ -54,19 +54,26 @@ interface FormSectionProps {
   title: string;
   description?: string;
   className?: string;
+  contentClassName?: string;
   children: React.ReactNode;
 }
 
-export function FormSection({ title, description, className, children }: FormSectionProps) {
+export function FormSection({
+  title,
+  description,
+  className,
+  contentClassName,
+  children,
+}: FormSectionProps) {
   return (
     <section className={cn("space-y-4", className)}>
-      <div className="border-b pb-2">
+      <div className="border-b pb-2.5">
         <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
         {description && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className={cn("space-y-4", contentClassName)}>{children}</div>
     </section>
   );
 }

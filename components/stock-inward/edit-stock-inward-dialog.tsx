@@ -3,13 +3,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { StockInwardFormFields } from "@/components/stock-inward/stock-inward-form-fields";
 import {
@@ -91,28 +85,28 @@ export function EditStockInwardDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Stock Inward</DialogTitle>
-          <DialogDescription>Update weight, length, and supplier for this inward entry.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <StockInwardFormFields
-            form={form}
-            profiles={profiles}
-            isSubmitted={isSubmitted}
-            idPrefix="edit-stock"
-          />
-          <FormDialogActions
-            onCancel={() => onOpenChange(false)}
-            submitLabel="Save Changes"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-            disabled={!entry}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Edit Stock Inward"
+      description="Update weight, length, and supplier for this inward entry."
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => onOpenChange(false)}
+          submitLabel="Save Changes"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+          disabled={!entry}
+        />
+      }
+    >
+      <StockInwardFormFields
+        form={form}
+        profiles={profiles}
+        isSubmitted={isSubmitted}
+        idPrefix="edit-stock"
+      />
+    </FormDialog>
   );
 }

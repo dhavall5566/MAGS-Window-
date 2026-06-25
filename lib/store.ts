@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Profile, SeriesName, Challan, StockInward, Consumption, PowderCoating, Scrap, Vendor, Report, UserRole, User } from "@/types";
+import type { Profile, SeriesName, Challan, StockInward, Consumption, PowderCoating, Scrap, Vendor, Report, UserRole, User, PurchaseOrder } from "@/types";
 import { mockChallans } from "@/lib/mock-data/challans";
 import { mockStockInward } from "@/lib/mock-data/stock";
 import { mockConsumption } from "@/lib/mock-data/consumption";
@@ -48,6 +48,7 @@ interface AppState {
   vendors: Vendor[];
   users: User[];
   reports: Report[];
+  purchaseOrders: PurchaseOrder[];
   navOrder: string[] | null;
   hiddenNavHrefs: string[];
   settings: AppSettings;
@@ -85,6 +86,9 @@ interface AppState {
   addUser: (user: User) => void;
   addReport: (report: Report) => void;
   deleteReport: (id: string) => void;
+  addPurchaseOrder: (order: PurchaseOrder) => void;
+  replacePurchaseOrder: (order: PurchaseOrder) => void;
+  deletePurchaseOrder: (id: string) => void;
   setNavOrder: (order: string[]) => void;
   setHiddenNavHrefs: (hrefs: string[]) => void;
   resetNavOrder: () => void;
@@ -108,6 +112,7 @@ export const useAppStore = create<AppState>()(
       vendors: mockVendors.map(normalizeVendor),
       users: mockUsers,
       reports: [],
+      purchaseOrders: [],
       navOrder: null,
       hiddenNavHrefs: [],
       settings: DEFAULT_APP_SETTINGS,
@@ -272,6 +277,22 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           reports: (s.reports ?? []).filter((report) => report.id !== id),
         })),
+      addPurchaseOrder: (order) =>
+        set((s) => ({ purchaseOrders: [...(s.purchaseOrders ?? []), order] })),
+      replacePurchaseOrder: (order) =>
+        set((s) => {
+          const list = s.purchaseOrders ?? [];
+          const exists = list.some((o) => o.id === order.id);
+          return {
+            purchaseOrders: exists
+              ? list.map((o) => (o.id === order.id ? order : o))
+              : [...list, order],
+          };
+        }),
+      deletePurchaseOrder: (id) =>
+        set((s) => ({
+          purchaseOrders: (s.purchaseOrders ?? []).filter((o) => o.id !== id),
+        })),
       setNavOrder: (order) => set({ navOrder: order }),
       setHiddenNavHrefs: (hrefs) => set({ hiddenNavHrefs: hrefs }),
       resetNavOrder: () => set({ navOrder: null, hiddenNavHrefs: [] }),
@@ -286,7 +307,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 44,
+      version: 45,
       skipHydration: true,
       migrate: (persisted) => {
         const state = persisted as AppState & {
@@ -376,6 +397,7 @@ export const useAppStore = create<AppState>()(
           stockInward,
           deletedStockInwardIds: rest.deletedStockInwardIds ?? [],
           reports: rest.reports ?? [],
+          purchaseOrders: rest.purchaseOrders ?? [],
           rolePermissions: {
             ...DEFAULT_ROLE_PERMISSIONS,
             ...(rest.rolePermissions ?? {}),

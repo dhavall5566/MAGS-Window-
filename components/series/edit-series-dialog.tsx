@@ -4,13 +4,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { seriesFormSchema, type SeriesFormData } from "@/lib/series-form";
@@ -59,15 +53,25 @@ export function EditSeriesDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Series</DialogTitle>
-          <DialogDescription>Update the series code used in profile master.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <FormSection title="Series identity">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      title="Edit Series"
+      description="Update the series code used in profile master."
+      onSubmit={handleSubmit(onSubmit)}
+      footer={
+        <FormDialogActions
+          onCancel={() => onOpenChange(false)}
+          submitLabel="Save Changes"
+          loadingLabel="Saving"
+          isSubmitting={isSubmitting}
+          disabled={!series}
+        />
+      }
+    >
+      <FormSection title="Series identity">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 label="Series Name"
                 htmlFor="edit-series-name"
@@ -107,16 +111,7 @@ export function EditSeriesDialog({
                 />
               </FormField>
             </div>
-          </FormSection>
-          <FormDialogActions
-            onCancel={() => onOpenChange(false)}
-            submitLabel="Save Changes"
-            loadingLabel="Saving"
-            isSubmitting={isSubmitting}
-            disabled={!series}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
+      </FormSection>
+    </FormDialog>
   );
 }
