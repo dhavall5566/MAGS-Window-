@@ -37,7 +37,7 @@ export function SidebarTabsEditor() {
     () => getOrderedNavItems(navOrder).map((item) => item.href),
     [navOrder]
   );
-  const savedHidden = hiddenNavHrefs ?? [];
+  const savedHidden = useMemo(() => hiddenNavHrefs ?? [], [hiddenNavHrefs]);
 
   const [draftOrder, setDraftOrder] = useState<string[]>(savedOrder);
   const [draftHiddenNavHrefs, setDraftHiddenNavHrefs] = useState<string[]>(savedHidden);

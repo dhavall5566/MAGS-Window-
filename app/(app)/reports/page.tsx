@@ -32,10 +32,31 @@ export default function ReportsPage() {
     fetchJson<Record<string, unknown>>("/api/reports").then(setData);
   }, []);
 
-  const summary = (data.summary ?? {}) as Record<string, number>;
-  const monthly = (data.monthlyStockMovement ?? []) as ReportApiData["monthlyStockMovement"];
-  const consumption = (data.consumptionTrends ?? []) as ReportApiData["consumptionTrends"];
-  const colors = (data.colorDistribution ?? []) as ReportApiData["colorDistribution"];
+  const summary = useMemo(
+    () => (data.summary ?? {}) as Record<string, number>,
+    [data.summary]
+  );
+  const monthly = useMemo(
+    () => (data.monthlyStockMovement ?? []) as ReportApiData["monthlyStockMovement"],
+    [data.monthlyStockMovement]
+  );
+  const consumption = useMemo(
+    () => (data.consumptionTrends ?? []) as ReportApiData["consumptionTrends"],
+    [data.consumptionTrends]
+  );
+  const colors = useMemo(
+    () => (data.colorDistribution ?? []) as ReportApiData["colorDistribution"],
+    [data.colorDistribution]
+  );
+  const inventoryByCategory = useMemo(
+    () =>
+      (data.inventoryByCategory ?? []) as {
+        category: string;
+        stock: number;
+        value: number;
+      }[],
+    [data.inventoryByCategory]
+  );
 
   const sortedReports = useMemo(
     () =>
@@ -50,14 +71,10 @@ export default function ReportsPage() {
       monthlyStockMovement: monthly,
       consumptionTrends: consumption,
       colorDistribution: colors,
-      inventoryByCategory: (data.inventoryByCategory ?? []) as {
-        category: string;
-        stock: number;
-        value: number;
-      }[],
+      inventoryByCategory,
       summary,
     }),
-    [monthly, consumption, colors, data.inventoryByCategory, summary]
+    [monthly, consumption, colors, inventoryByCategory, summary]
   );
 
   const handleDownloadReport = useCallback(

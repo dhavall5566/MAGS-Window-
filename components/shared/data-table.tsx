@@ -238,12 +238,15 @@ export function DataTable<T extends object>({
   const [columnOrder, setColumnOrder] = useState<string[]>(defaultColumnOrder);
   const [columnsReady, setColumnsReady] = useState(false);
 
+  const hideableKeysKey = hideableKeys.join("|");
+  const defaultColumnOrderKey = defaultColumnOrder.join("|");
+
   useEffect(() => {
     setHiddenKeys(loadHiddenColumnKeys(tableId, hideableKeys));
     setColumnOrder(loadColumnOrder(tableId, defaultColumnOrder));
     setPageSize(loadPageSize(tableId) || defaultPageSize);
     setColumnsReady(true);
-  }, [tableId, hideableKeys.join("|"), defaultColumnOrder.join("|"), defaultPageSize]);
+  }, [tableId, hideableKeys, defaultColumnOrder, defaultPageSize, hideableKeysKey, defaultColumnOrderKey]);
 
   useEffect(() => {
     setPage(1);

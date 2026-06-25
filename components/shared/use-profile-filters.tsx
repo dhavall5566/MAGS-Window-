@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import {
+  getProfileCodeValue,
   getProfileSeriesAndCode,
   getUniqueProfileCodesForSeries,
   profileMatchesSeriesFilter,
