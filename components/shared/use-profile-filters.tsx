@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { ProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import {
-  getProfileCodeValue,
   getProfileSeriesAndCode,
   getUniqueProfileCodesForSeries,
+  profileMatchesSeriesFilter,
 } from "@/lib/profile";
 import { getActiveSeriesLabels } from "@/lib/series";
 import { useAppStore } from "@/lib/store";
@@ -35,8 +35,8 @@ export function useProfileFilters(profiles: Profile[]) {
   };
 
   const matchesProfile = (profile: Profile) => {
-    const { series, code } = getProfileSeriesAndCode(profile);
-    if (seriesFilter && series !== seriesFilter) return false;
+    const { code } = getProfileSeriesAndCode(profile);
+    if (!profileMatchesSeriesFilter(profile, seriesFilter)) return false;
     if (codeFilter && code !== codeFilter) return false;
     return true;
   };

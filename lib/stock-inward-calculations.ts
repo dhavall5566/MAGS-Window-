@@ -27,10 +27,16 @@ export function normalizeDyeCode(dyeCode: string): string {
   return trimmed;
 }
 
-/** Resolve profile from configured dye code map — currently only "01" → M25-01. */
+/** Resolve profiles by dye / DIA code (numeric pad or profile diaCode field). */
 export function findProfilesByDyeCode(profiles: Profile[], dyeCode: string): Profile[] {
   const normalized = normalizeDyeCode(dyeCode);
   if (!normalized) return [];
+
+  const byDiaCode = profiles.filter((item) => {
+    const profileDia = String(item.diaCode ?? "").trim();
+    return profileDia === normalized || profileDia === dyeCode.trim();
+  });
+  if (byDiaCode.length > 0) return byDiaCode;
 
   const mappedCode = STOCK_INWARD_DYE_CODE_TO_PROFILE[normalized];
   if (!mappedCode) return [];

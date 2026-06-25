@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
-import { mergeConsumption } from "@/lib/challan-consumption";
+import { mergeManualConsumption } from "@/lib/challan-consumption";
 import { buildStockMasterRows, mergeStockInward } from "@/lib/stock-master";
 import { formatNumber } from "@/lib/utils";
 import { fetchJson, getCachedJson } from "@/lib/fetch-json";
@@ -30,7 +30,7 @@ export default function StockMasterPage() {
       )
     );
     setConsumption(
-      mergeConsumption(
+      mergeManualConsumption(
         getCachedJson<{ consumption?: Consumption[] }>("/api/consumption")?.consumption ?? [],
         useAppStore.getState().consumption ?? []
       )
@@ -47,7 +47,7 @@ export default function StockMasterPage() {
 
   useEffect(() => {
     fetchJson<{ consumption?: Consumption[] }>("/api/consumption").then((d) => {
-      setConsumption(mergeConsumption(d?.consumption ?? [], storeConsumption ?? []));
+      setConsumption(mergeManualConsumption(d?.consumption ?? [], storeConsumption ?? []));
     });
   }, [storeConsumption]);
 

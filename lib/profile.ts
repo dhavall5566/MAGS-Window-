@@ -50,6 +50,34 @@ export function getProfileSeriesAndCode(
   };
 }
 
+/** Series label used for filters — prefers profile master seriesName over parsed code prefix. */
+export function getProfileSeriesLabel(
+  profile: Pick<Profile, "code" | "seriesName" | "profileNo">
+): string {
+  const seriesName = profile.seriesName?.trim();
+  if (seriesName) return seriesName;
+  return getProfileSeriesAndCode(profile).series;
+}
+
+export function profileMatchesSeriesFilter(
+  profile: Pick<Profile, "code" | "seriesName" | "profileNo">,
+  seriesFilter: string
+): boolean {
+  if (!seriesFilter) return true;
+
+  const label = getProfileSeriesLabel(profile);
+  if (label === seriesFilter) return true;
+
+  // Support full labels (MCW38 CURTAIN WALL) when filter is the short code (MCW38).
+  if (label.startsWith(`${seriesFilter} `)) return true;
+
+  const { series } = getProfileSeriesAndCode(profile);
+  if (series === seriesFilter) return true;
+  if (seriesFilter.startsWith(series)) return true;
+
+  return false;
+}
+
 export function getUniqueProfileSeries(profiles: Profile[]): string[] {
   return [
     ...new Set(profiles.map((p) => getProfileSeriesAndCode(p).series).filter(Boolean)),
@@ -63,7 +91,7 @@ export function getUniqueProfileCodesForSeries(
   return [
     ...new Set(
       profiles
-        .filter((p) => getProfileSeriesAndCode(p).series === series)
+        .filter((p) => profileMatchesSeriesFilter(p, series))
         .map((p) => getProfileSeriesAndCode(p).code)
         .filter(Boolean)
     ),

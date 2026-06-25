@@ -1,12 +1,21 @@
 import type { Profile, SeriesName } from "@/types";
 import { getUniqueProfileSeries } from "@/lib/profile";
 
-export function getSeriesLabel(series: Pick<SeriesName, "name" | "seriesNo">): string {
-  return `${series.name}${series.seriesNo}`;
+export function getSeriesLabel(
+  series: Pick<SeriesName, "name" | "seriesNo" | "seriesSuffix">
+): string {
+  const base = `${series.name}${series.seriesNo}`;
+  const suffix = series.seriesSuffix?.trim();
+  return suffix ? `${base} ${suffix}` : base;
 }
 
 export function getActiveSeriesLabels(
-  seriesNames: Array<{ name: string; seriesNo: string; status?: string }>
+  seriesNames: Array<{
+    name: string;
+    seriesNo: string;
+    seriesSuffix?: string;
+    status?: string;
+  }>
 ): string[] {
   return seriesNames
     .filter((series) => series.status !== "inactive")
@@ -16,7 +25,12 @@ export function getActiveSeriesLabels(
 
 /** Series Name master only — used for filters and add profile. */
 export function getSeriesFormOptions(
-  seriesNames: Array<{ name: string; seriesNo: string; status?: string }>,
+  seriesNames: Array<{
+    name: string;
+    seriesNo: string;
+    seriesSuffix?: string;
+    status?: string;
+  }>,
   currentLabel?: string
 ): string[] {
   const active = getActiveSeriesLabels(seriesNames);

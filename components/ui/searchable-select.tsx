@@ -74,7 +74,13 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const inDialog = portalContainer !== null;
+  const listboxId = React.useId();
 
   const selected = options.find((option) => option.value === value);
 
@@ -90,7 +96,42 @@ export function SearchableSelect({
   }, [options, query, searchable]);
 
   React.useEffect(() => {
-    if (!open) setQuery("");
+    if (!open) {
+      setQuery("");
+      setActiveIndex(0);
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const activeOption = listRef.current?.querySelector<HTMLElement>(
+      `[data-option-index="${activeIndex}"]`
+    );
+    activeOption?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
+  const handleOpenChange = React.useCallback((next: boolean) => {
+    if (next) {
+      const dialog = triggerRef.current?.closest('[role="dialog"]');
+      setPortalContainer(dialog instanceof HTMLElement ? dialog : null);
+    } else {
+      setPortalContainer(null);
+    }
+    setOpen(next);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+
+    const frame = requestAnimationFrame(() => {
+      searchRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   if (!searchable) {
@@ -133,20 +174,71 @@ export function SearchableSelect({
 
   const handleSelect = (next: string) => {
     onValueChange?.(next);
-    setOpen(false);
+    handleOpenChange(false);
+    triggerRef.current?.focus({ preventScroll: true });
+  };
+
+  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    event.stopPropagation();
+    const count = displayedOptions.length;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      handleOpenChange(false);
+      triggerRef.current?.focus({ preventScroll: true });
+      return;
+    }
+
+    if (count === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((current) => Math.min(count - 1, current + 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => Math.max(0, current - 1));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setActiveIndex(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setActiveIndex(count - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const option = displayedOptions[activeIndex];
+      if (option && !option.disabled) {
+        handleSelect(option.value);
+      }
+    }
+  };
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleOpenChange(true);
+    }
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal={false}>
+    <Popover open={open} onOpenChange={handleOpenChange} modal={!inDialog}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           id={id}
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
+          aria-activedescendant={
+            open && displayedOptions[activeIndex]
+              ? `${listboxId}-option-${activeIndex}`
+              : undefined
+          }
           aria-invalid={ariaInvalid}
           disabled={disabled}
+          onKeyDown={handleTriggerKeyDown}
           className={cn(
             "form-field h-10 w-full justify-between gap-2 px-3 font-normal hover:bg-background",
             !selected && "text-muted-foreground",
@@ -166,16 +258,19 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        container={portalContainer}
         align={align}
         side={side}
         sideOffset={6}
         className={cn(
-          "w-[var(--radix-popover-trigger-width)] min-w-[14rem] overflow-hidden rounded-lg border border-border/80 bg-popover p-1.5 shadow-lg",
+          "z-[9999] w-[var(--radix-popover-trigger-width)] min-w-[14rem] overflow-hidden rounded-lg border border-border/80 bg-popover p-1.5 shadow-lg",
           contentClassName
         )}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          searchRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
         }}
       >
         <div className="mb-1.5 rounded-md border border-input bg-background p-2">
@@ -188,27 +283,38 @@ export function SearchableSelect({
               placeholder={searchPlaceholder}
               className="h-9 border-0 bg-transparent pl-8 shadow-none focus-visible:ring-0"
               aria-label={searchPlaceholder}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setOpen(false);
-                }
-              }}
+              autoComplete="off"
+              onMouseDown={(event) => event.stopPropagation()}
+              onKeyDown={handleSearchKeyDown}
             />
           </div>
         </div>
-        <div className="max-h-60 overflow-y-auto overscroll-contain">
+        <div
+          ref={listRef}
+          id={listboxId}
+          role="listbox"
+          className="max-h-60 overflow-y-auto overscroll-contain"
+        >
           {displayedOptions.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
           ) : (
-            displayedOptions.map((option) => {
+            displayedOptions.map((option, index) => {
               const isSelected = option.value === value;
+              const isActive = index === activeIndex;
               return (
                 <button
                   key={option.value}
                   type="button"
+                  role="option"
+                  id={`${listboxId}-option-${index}`}
+                  data-option-index={index}
+                  aria-selected={isSelected}
                   disabled={option.disabled}
-                  className={selectOptionClass(isSelected, option.className)}
+                  className={cn(
+                    selectOptionClass(isSelected, option.className),
+                    isActive && !isSelected && "bg-accent text-accent-foreground"
+                  )}
+                  onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => handleSelect(option.value)}
                 >
                   <span className="absolute left-2.5 flex h-4 w-4 items-center justify-center">

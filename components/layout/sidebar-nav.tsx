@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   buildSidebarNavTree,
@@ -10,6 +10,7 @@ import {
   type NavItemConfig,
   type SidebarNavNode,
 } from "@/lib/nav-items";
+import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { cn } from "@/lib/utils";
 
 const EXPANDED_GROUPS_KEY = "mags-nav-expanded-groups";
@@ -41,11 +42,13 @@ function NavLinkItem({
   pathname,
   onNavigate,
   nested = false,
+  tabbable = true,
 }: {
   item: NavItemConfig;
   pathname: string;
   onNavigate?: () => void;
   nested?: boolean;
+  tabbable?: boolean;
 }) {
   const router = useRouter();
   const Icon = item.icon;
@@ -55,10 +58,12 @@ function NavLinkItem({
     <Link
       href={item.href}
       prefetch
+      tabIndex={tabbable ? undefined : -1}
+      aria-hidden={tabbable ? undefined : true}
       onMouseEnter={() => router.prefetch(item.href)}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium tracking-wide transition-all duration-200 ease-out",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium tracking-wide transition-all duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
         nested && "py-2 pl-3",
         active
           ? "bg-sidebar-accent text-white shadow-sm"
@@ -95,6 +100,23 @@ function NavGroupItem({
   const GroupIcon = group.group.icon;
   const childActive = groupItems.some((child) => isPathActive(pathname, child.href));
   const panelId = `nav-group-${group.group.id}`;
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowRight" && !expanded) {
+      event.preventDefault();
+      onToggle();
+      window.setTimeout(() => {
+        panelRef.current?.querySelector<HTMLElement>("a[href]")?.focus({ preventScroll: true });
+      }, 50);
+    } else if (event.key === "ArrowRight" && expanded) {
+      event.preventDefault();
+      panelRef.current?.querySelector<HTMLElement>("a[href]")?.focus({ preventScroll: true });
+    } else if (event.key === "ArrowLeft" && expanded) {
+      event.preventDefault();
+      onToggle();
+    }
+  };
 
   return (
     <div className="space-y-0.5">
@@ -104,8 +126,9 @@ function NavGroupItem({
         aria-expanded={expanded}
         aria-controls={panelId}
         onClick={onToggle}
+        onKeyDown={handleKeyDown}
         className={cn(
-          "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-semibold tracking-wide transition-all duration-200 ease-out",
+          "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-semibold tracking-wide transition-all duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
           childActive
             ? "bg-sidebar-border/50 text-white"
             : "text-sidebar-foreground hover:bg-sidebar-border/80 hover:text-white"
@@ -128,27 +151,27 @@ function NavGroupItem({
       </button>
 
       <div
+        ref={panelRef}
         id={panelId}
         role="region"
         aria-labelledby={`${panelId}-trigger`}
+        aria-hidden={!expanded}
+        hidden={!expanded}
         className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out",
-          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          expanded ? "block" : "hidden",
+          "ml-3 space-y-0.5 border-l border-sidebar-border/60 py-0.5 pl-2"
         )}
       >
-        <div className="overflow-hidden">
-          <div className="ml-3 space-y-0.5 border-l border-sidebar-border/60 py-0.5 pl-2">
-            {groupItems.map((child) => (
-              <NavLinkItem
-                key={child.href}
-                item={child}
-                pathname={pathname}
-                onNavigate={onNavigate}
-                nested
-              />
-            ))}
-          </div>
-        </div>
+        {groupItems.map((child) => (
+          <NavLinkItem
+            key={child.href}
+            item={child}
+            pathname={pathname}
+            onNavigate={onNavigate}
+            nested
+            tabbable={expanded}
+          />
+        ))}
       </div>
     </div>
   );
@@ -156,8 +179,11 @@ function NavGroupItem({
 
 export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
   const pathname = usePathname() ?? "";
+  const navListRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildSidebarNavTree(items), [items]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+
+  useListKeyboardNav(navListRef);
 
   useEffect(() => {
     setExpandedGroups((current) => {
@@ -197,7 +223,7 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
   }
 
   return (
-    <div className="space-y-0.5">
+    <div ref={navListRef} className="space-y-0.5">
       {tree.map((node) => {
         if (node.type === "link") {
           return (

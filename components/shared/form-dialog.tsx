@@ -33,10 +33,18 @@ interface FormDialogProps {
   contentClassName?: string;
 }
 
-/** Ignore clicks on portaled popovers/selects so the dialog stays open. */
+/** Portaled select/popover layers render outside the dialog DOM tree. */
+function isPortaledLayerTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest("[data-radix-popper-content-wrapper]") ??
+      target.closest("[data-radix-select-viewport]")
+  );
+}
+
+/** Keep the dialog open while interacting with portaled dropdowns. */
 function ignorePortaledLayerDismiss(event: Event) {
-  const target = event.target;
-  if (target instanceof Element && target.closest("[data-radix-popper-content-wrapper]")) {
+  if (isPortaledLayerTarget(event.target)) {
     event.preventDefault();
   }
 }
@@ -76,6 +84,7 @@ export function FormDialog({
         )}
         onPointerDownOutside={ignorePortaledLayerDismiss}
         onInteractOutside={ignorePortaledLayerDismiss}
+        onFocusOutside={ignorePortaledLayerDismiss}
       >
         <div className="border-b px-6 py-5 pr-12">
           <DialogHeader>

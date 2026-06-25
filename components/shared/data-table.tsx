@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -194,6 +194,7 @@ export function DataTable<T extends object>({
     null
   );
   const [page, setPage] = useState(1);
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const [pageSize, setPageSize] = useState(defaultPageSize);
 
   const userColumns = useMemo(
@@ -444,6 +445,19 @@ export function DataTable<T extends object>({
     );
   };
 
+  const handleRowKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTableCellElement>, rowIndex: number) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const nextIndex = event.key === "ArrowDown" ? rowIndex + 1 : rowIndex - 1;
+      const nextRow = rowRefs.current[nextIndex];
+      const nextFocus =
+        nextRow?.querySelector<HTMLElement>('td[data-row-focus="true"]') ?? nextRow;
+      nextFocus?.focus({ preventScroll: true });
+    },
+    []
+  );
+
   return (
     <Card className="overflow-hidden border shadow-sm">
       {hasToolbar && (
@@ -559,6 +573,7 @@ export function DataTable<T extends object>({
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder={searchPlaceholder}
+                  aria-label={searchPlaceholder}
                   className="h-10 pl-9"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -609,6 +624,7 @@ export function DataTable<T extends object>({
                       <button
                         type="button"
                         onClick={() => handleSort(col)}
+                        aria-label={`Sort by ${col.header}`}
                         className={cn(
                           "inline-flex w-full items-center gap-1.5 transition-colors hover:text-foreground",
                           col.align === "center" && "justify-center",
@@ -657,6 +673,9 @@ export function DataTable<T extends object>({
                 return (
                 <TableRow
                   key={((row as { id?: string }).id) ?? pageStart + i}
+                  ref={(element) => {
+                    rowRefs.current[i] = element;
+                  }}
                   className={cn(
                     "group border-b border-border/50 transition-colors",
                     muted
@@ -664,8 +683,22 @@ export function DataTable<T extends object>({
                       : "hover:bg-muted/20"
                   )}
                 >
-                  {visibleColumns.map((col) => (
-                    <TableCell key={col.key} className={getCellClass(col, "body", muted)}>
+                  {visibleColumns.map((col, colIndex) => (
+                    <TableCell
+                      key={col.key}
+                      tabIndex={colIndex === 0 ? 0 : undefined}
+                      data-row-focus={colIndex === 0 ? "true" : undefined}
+                      onKeyDown={
+                        colIndex === 0
+                          ? (event) => handleRowKeyDown(event, i)
+                          : undefined
+                      }
+                      className={cn(
+                        getCellClass(col, "body", muted),
+                        colIndex === 0 &&
+                          "outline-none focus-visible:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      )}
+                    >
                       {col.key === SERIAL_COLUMN_KEY
                         ? serialNumber
                         : col.render

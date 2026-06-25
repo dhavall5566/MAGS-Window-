@@ -3,21 +3,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Profile, SeriesName, Challan, StockInward, Consumption, PowderCoating, Scrap, Vendor, Report, UserRole, User, PurchaseOrder } from "@/types";
-import { mockChallans } from "@/lib/mock-data/challans";
-import { mockStockInward } from "@/lib/mock-data/stock";
-import { mockConsumption } from "@/lib/mock-data/consumption";
-import { mockPowderCoating } from "@/lib/mock-data/powder-coating";
-import { mockScrap } from "@/lib/mock-data/scrap";
 import { mockVendors } from "@/lib/mock-data/vendors";
 import { mockUsers } from "@/lib/mock-data/users";
 import { enrichChallanVendorDetails, normalizeVendor } from "@/lib/vendor";
-import { consumptionEntriesFromChallans } from "@/lib/challan-consumption";
-import { mockProfiles } from "@/lib/mock-data/profiles";
+import { getManualConsumption } from "@/lib/challan-consumption";
 import {
   appendPriceHistory,
   buildInitialPriceHistory,
-  coalesceProfileRecords,
-  getProfileCodeValue,
   normalizeProfile,
 } from "@/lib/profile";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "@/lib/app-settings";
@@ -28,14 +20,6 @@ import {
 } from "@/lib/role-permissions";
 import { normalizeStockInwardSupplier } from "@/lib/stock-inward-form";
 import { normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
-function syncConsumptionWithChallans(
-  challans: Challan[],
-  consumption: Consumption[]
-): Consumption[] {
-  const manual = (consumption ?? []).filter((entry) => !entry.challanId);
-  return [...manual, ...consumptionEntriesFromChallans(challans)];
-}
-
 interface AppState {
   profiles: Profile[];
   seriesNames: SeriesName[];
@@ -103,12 +87,12 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       profiles: [],
       seriesNames: [],
-      challans: mockChallans,
-      stockInward: mockStockInward,
+      challans: [],
+      stockInward: [],
       deletedStockInwardIds: [],
-      consumption: syncConsumptionWithChallans(mockChallans, mockConsumption),
-      powderCoating: mockPowderCoating,
-      scrap: mockScrap,
+      consumption: [],
+      powderCoating: [],
+      scrap: [],
       vendors: mockVendors.map(normalizeVendor),
       users: mockUsers,
       reports: [],
@@ -182,42 +166,26 @@ export const useAppStore = create<AppState>()(
           ),
         })),
       addChallan: (challan) =>
-        set((s) => {
-          const challans = [...(s.challans ?? []), challan];
-          return {
-            challans,
-            consumption: syncConsumptionWithChallans(challans, s.consumption ?? []),
-          };
-        }),
+        set((s) => ({ challans: [...(s.challans ?? []), challan] })),
       updateChallan: (id, updates) =>
-        set((s) => {
-          const challans = (s.challans ?? []).map((c) =>
+        set((s) => ({
+          challans: (s.challans ?? []).map((c) =>
             c.id === id ? ({ ...c, ...updates } as Challan) : c
-          );
-          return {
-            challans,
-            consumption: syncConsumptionWithChallans(challans, s.consumption ?? []),
-          };
-        }),
+          ),
+        })),
       replaceChallan: (challan) =>
         set((s) => {
           const exists = (s.challans ?? []).some((c) => c.id === challan.id);
-          const challans = exists
-            ? (s.challans ?? []).map((c) => (c.id === challan.id ? challan : c))
-            : [...(s.challans ?? []), challan];
           return {
-            challans,
-            consumption: syncConsumptionWithChallans(challans, s.consumption ?? []),
+            challans: exists
+              ? (s.challans ?? []).map((c) => (c.id === challan.id ? challan : c))
+              : [...(s.challans ?? []), challan],
           };
         }),
       deleteChallan: (id) =>
-        set((s) => {
-          const challans = (s.challans ?? []).filter((c) => c.id !== id);
-          return {
-            challans,
-            consumption: syncConsumptionWithChallans(challans, s.consumption ?? []),
-          };
-        }),
+        set((s) => ({
+          challans: (s.challans ?? []).filter((c) => c.id !== id),
+        })),
       addStockInward: (entry) =>
         set((s) => ({ stockInward: [...(s.stockInward ?? []), entry] })),
       upsertStockInward: (entry) =>
@@ -307,9 +275,9 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 45,
+      version: 49,
       skipHydration: true,
-      migrate: (persisted) => {
+      migrate: (persisted, fromVersion) => {
         const state = persisted as AppState & {
           hiddenNavHrefs?: string[];
           seriesNames?: SeriesName[];
@@ -318,15 +286,14 @@ export const useAppStore = create<AppState>()(
           userPermissionOverrides?: UserPermissionOverrides;
         };
         const { seriesNames: persistedSeriesNames, ...rest } = state;
-        const seriesNames = persistedSeriesNames ?? [];
-        const mockByCode = new Map(
-          mockProfiles.map((profile) => [getProfileCodeValue(profile), profile])
-        );
-        const profiles = (rest.profiles ?? []).map((profile) => {
-          const mock = mockByCode.get(getProfileCodeValue(profile));
-          const merged = mock ? coalesceProfileRecords(mock, profile) : profile;
-          return normalizeProfile(merged);
-        });
+        const clearedMaster = fromVersion < 46;
+        const clearedInventory = fromVersion < 47;
+        const clearedConsumption = fromVersion < 48;
+        const clearedOperations = fromVersion < 49;
+        const seriesNames = clearedMaster ? [] : (persistedSeriesNames ?? []);
+        const profiles = clearedMaster
+          ? []
+          : (rest.profiles ?? []).map((profile) => normalizeProfile(profile));
         const mockVendorIds = new Set(mockVendors.map((vendor) => vendor.id));
         const userVendors = (rest.vendors ?? [])
           .filter((vendor) => !mockVendorIds.has(vendor.id))
@@ -335,47 +302,37 @@ export const useAppStore = create<AppState>()(
         const mockUserIds = new Set(mockUsers.map((user) => user.id));
         const customUsers = (rest.users ?? []).filter((user) => !mockUserIds.has(user.id));
         const users = [...mockUsers, ...customUsers];
-        const mockPcIds = new Set(mockPowderCoating.map((entry) => entry.id));
-        const userPowderCoating = (rest.powderCoating ?? [])
-          .filter((entry) => !mockPcIds.has(entry.id))
-          .map((entry) => {
-            const { status: _status, ...rest } = entry as PowderCoating & {
-              status?: string;
-            };
-            return rest;
-          });
-        const powderCoating = [...mockPowderCoating, ...userPowderCoating];
         const stripPowderCoatingChallanStatus = (challan: Challan): Challan => {
           if (challan.type !== "powder_coating") return challan;
-          const { status: _status, ...rest } = challan as Challan & { status?: string };
-          return rest as Challan;
+          const { status: _status, ...restChallan } = challan as Challan & { status?: string };
+          return restChallan as Challan;
         };
-        const mockIds = new Set(mockChallans.map((challan) => challan.id));
-        const userChallans = (rest.challans ?? [])
-          .filter((challan) => !mockIds.has(challan.id))
-          .map((challan) =>
-            stripPowderCoatingChallanStatus(enrichChallanVendorDetails(challan, vendors))
-          );
-        const challans = [
-          ...mockChallans.map((challan) =>
-            stripPowderCoatingChallanStatus(enrichChallanVendorDetails(challan, vendors))
-          ),
-          ...userChallans,
-        ];
-        const mockInwardIds = new Set(mockStockInward.map((entry) => entry.id));
-        const userStockInward = (rest.stockInward ?? [])
-          .filter((entry) => !mockInwardIds.has(entry.id))
-          .map((entry) =>
-            normalizeStockInwardRecord({
-              ...entry,
-              supplier: normalizeStockInwardSupplier(entry.supplier),
-              dyeCode: entry.dyeCode?.trim() ?? "",
-            })
-          );
-        const stockInward = [
-          ...mockStockInward.map(normalizeStockInwardRecord),
-          ...userStockInward,
-        ];
+        const normalizeChallan = (challan: Challan) =>
+          stripPowderCoatingChallanStatus(enrichChallanVendorDetails(challan, vendors));
+        const challans = clearedOperations
+          ? []
+          : (rest.challans ?? []).map(normalizeChallan);
+        const powderCoating = clearedOperations
+          ? []
+          : (rest.powderCoating ?? []).map((entry) => {
+              const { status: _status, ...clean } = entry as PowderCoating & {
+                status?: string;
+              };
+              return clean;
+            });
+        const scrap = clearedOperations ? [] : (rest.scrap ?? []);
+        const stockInward = clearedInventory
+          ? []
+          : (rest.stockInward ?? []).map((entry) =>
+              normalizeStockInwardRecord({
+                ...entry,
+                supplier: normalizeStockInwardSupplier(entry.supplier),
+                dyeCode: entry.dyeCode?.trim() ?? "",
+              })
+            );
+        const consumption = clearedConsumption
+          ? []
+          : getManualConsumption(rest.consumption ?? []);
         return {
           ...rest,
           seriesNames,
@@ -386,18 +343,16 @@ export const useAppStore = create<AppState>()(
             ...(rest.settings ?? {}),
           },
           challans,
-          consumption: syncConsumptionWithChallans(
-            challans,
-            rest.consumption ?? mockConsumption
-          ),
+          consumption,
           profiles,
           vendors,
           users,
           powderCoating,
+          scrap,
           stockInward,
-          deletedStockInwardIds: rest.deletedStockInwardIds ?? [],
+          deletedStockInwardIds: clearedInventory ? [] : (rest.deletedStockInwardIds ?? []),
           reports: rest.reports ?? [],
-          purchaseOrders: rest.purchaseOrders ?? [],
+          purchaseOrders: clearedInventory ? [] : (rest.purchaseOrders ?? []),
           rolePermissions: {
             ...DEFAULT_ROLE_PERMISSIONS,
             ...(rest.rolePermissions ?? {}),

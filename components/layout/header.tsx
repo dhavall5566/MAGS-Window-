@@ -27,10 +27,12 @@ import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   user?: AppUser | null;
+  menuButtonRef?: React.RefObject<HTMLButtonElement | null>;
+  sidebarOpen?: boolean;
   onMenuClick?: () => void;
 }
 
-export function Header({ user, onMenuClick }: HeaderProps) {
+export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -47,18 +49,34 @@ export function Header({ user, onMenuClick }: HeaderProps) {
 
   return (
     <header
+      aria-label="Application header"
       className={cn(
         "sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:gap-4 sm:px-4 lg:px-6",
         isSettings ? "min-h-16 py-3" : "h-16"
       )}
     >
-      <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick}>
+      <Button
+        ref={menuButtonRef}
+        variant="ghost"
+        size="icon"
+        className="lg:hidden shrink-0"
+        aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+        aria-expanded={sidebarOpen ?? false}
+        aria-controls="app-navigation"
+        onClick={onMenuClick}
+      >
         <Menu className="h-5 w-5" />
       </Button>
 
       {isSettings && (
         <div className="min-w-0">
-          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Settings</h1>
+          <h1
+            id="page-title"
+            tabIndex={-1}
+            className="text-xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl"
+          >
+            Settings
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             User, navigation, and company preferences
           </p>
@@ -84,7 +102,7 @@ export function Header({ user, onMenuClick }: HeaderProps) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">

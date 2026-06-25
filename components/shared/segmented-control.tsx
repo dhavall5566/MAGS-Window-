@@ -46,9 +46,31 @@ export function SegmentedControl<T extends string>({
     return () => window.removeEventListener("resize", updateIndicator);
   }, [updateIndicator]);
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const currentIndex = options.findIndex((option) => option.value === value);
+    if (currentIndex === -1) return;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const next = options[(currentIndex + 1) % options.length];
+      onValueChange(next.value);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = options[(currentIndex - 1 + options.length) % options.length];
+      onValueChange(next.value);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      onValueChange(options[0].value);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      onValueChange(options[options.length - 1].value);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
+      onKeyDown={handleKeyDown}
       className={cn(
         "relative inline-flex items-center rounded-xl border border-border/60 bg-muted p-1 shadow-inner",
         className
@@ -75,7 +97,7 @@ export function SegmentedControl<T extends string>({
             data-segment-value={option.value}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              "relative z-10 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-200 ease-out",
+              "relative z-10 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               active
                 ? "font-semibold text-foreground"
                 : "text-muted-foreground hover:text-foreground"

@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
-import { mergeConsumption } from "@/lib/challan-consumption";
+import { mergeManualConsumption } from "@/lib/challan-consumption";
 import { buildStockLedgerRows, mergeStockInward } from "@/lib/stock-master";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { fetchJson } from "@/lib/fetch-json";
@@ -30,7 +30,7 @@ export default function StockLedgerPage() {
 
   useEffect(() => {
     fetchJson<{ consumption?: Consumption[] }>("/api/consumption").then((d) => {
-      setConsumption(mergeConsumption(d?.consumption ?? [], storeConsumption ?? []));
+      setConsumption(mergeManualConsumption(d?.consumption ?? [], storeConsumption ?? []));
     });
   }, [storeConsumption]);
 

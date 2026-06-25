@@ -45,6 +45,11 @@ export function consumptionEntriesFromChallans(challans: Challan[]): Consumption
   return challans.flatMap(consumptionEntriesFromChallan);
 }
 
+/** Manual consumption entries only — excludes challan-derived rows. */
+export function getManualConsumption(consumption: Consumption[]): Consumption[] {
+  return (consumption ?? []).filter((entry) => !entry.challanId);
+}
+
 export function mergeConsumption(
   api: Consumption[],
   store: Consumption[]
@@ -59,6 +64,13 @@ export function mergeConsumption(
     }
   });
   return merged;
+}
+
+export function mergeManualConsumption(
+  api: Consumption[],
+  store: Consumption[]
+): Consumption[] {
+  return mergeConsumption(api, getManualConsumption(store));
 }
 
 export function getProfileStockKey(

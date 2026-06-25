@@ -22,6 +22,8 @@ export interface SeriesName {
   id: string;
   name: string;
   seriesNo: string;
+  /** Optional text after the series code, e.g. CURTAIN WALL → MCW38 CURTAIN WALL */
+  seriesSuffix?: string;
   status: "active" | "inactive";
   createdAt: string;
 }
@@ -32,6 +34,8 @@ export interface Profile {
   name: string;
   seriesName: string;
   profileNo: string;
+  /** DIA / dye code from profile master (e.g. 1001). */
+  diaCode?: string;
   /** Available lengths (m) for this profile — qty and kg/m are shared across all. */
   lengthsInMeter?: number[];
   /** Primary length in meters (MTR). Legacy field name from RMM storage. */

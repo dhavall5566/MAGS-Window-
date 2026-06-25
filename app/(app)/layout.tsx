@@ -9,7 +9,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <AppShell>
       <StoreHydration />
       <StoreDataBootstrap />
-      <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-6">{children}</main>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="min-w-0 flex-1 overflow-x-hidden p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4 lg:p-6"
+      >
+        {children}
+      </main>
     </AppShell>
   );
 }

@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
-import { mergeConsumption } from "@/lib/challan-consumption";
+import { mergeManualConsumption } from "@/lib/challan-consumption";
 import {
   calculateTotalProfiles,
   STOCK_INWARD_KG_PER_METER,
@@ -18,7 +18,7 @@ import type { Consumption } from "@/types";
 function getInitialConsumption(storeConsumption: Consumption[]): Consumption[] {
   const cached =
     getCachedJson<{ consumption?: Consumption[] }>("/api/consumption")?.consumption ?? [];
-  return mergeConsumption(cached, storeConsumption);
+  return mergeManualConsumption(cached, storeConsumption);
 }
 
 export default function ConsumptionPage() {
@@ -28,7 +28,7 @@ export default function ConsumptionPage() {
   useEffect(() => {
     setData(getInitialConsumption(useAppStore.getState().consumption ?? []));
     fetchJson<{ consumption?: Consumption[] }>("/api/consumption").then((d) => {
-      setData(mergeConsumption(d?.consumption ?? [], storeConsumption ?? []));
+      setData(mergeManualConsumption(d?.consumption ?? [], storeConsumption ?? []));
     });
   }, [storeConsumption]);
 
