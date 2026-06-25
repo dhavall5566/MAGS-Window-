@@ -18,6 +18,12 @@ import { formatDate, formatNumber } from "@/lib/utils";
 import { fetchJson } from "@/lib/fetch-json";
 import { mergeProfiles } from "@/lib/profile";
 import { getPurchaseOrderTotalWeight } from "@/lib/purchase-order-form";
+import {
+  createPurchaseOrderApi,
+  deletePurchaseOrderApi,
+  fetchPurchaseOrders,
+  updatePurchaseOrderApi,
+} from "@/lib/purchase-order-api";
 import { useAppStore } from "@/lib/store";
 import type { Profile, PurchaseOrder } from "@/types";
 
@@ -122,7 +128,6 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
 }
 
 export default function PurchaseOrdersPage() {
-  const purchaseOrders = useAppStore((s) => s.purchaseOrders);
   const storeProfiles = useAppStore((s) => s.profiles);
   const vendors = useAppStore((s) => s.vendors);
   const addPurchaseOrder = useAppStore((s) => s.addPurchaseOrder);
@@ -130,6 +135,7 @@ export default function PurchaseOrdersPage() {
   const deletePurchaseOrder = useAppStore((s) => s.deletePurchaseOrder);
 
   const [apiProfiles, setApiProfiles] = useState<Profile[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -139,34 +145,74 @@ export default function PurchaseOrdersPage() {
     [apiProfiles, storeProfiles]
   );
 
-  useEffect(() => {
-    fetchJson<{ profiles?: Profile[] }>("/api/profiles")
-      .then((d) => setApiProfiles(d?.profiles ?? []))
-      .finally(() => setIsLoading(false));
+  const loadOrders = useCallback(async () => {
+    const merged = await fetchPurchaseOrders(useAppStore.getState().purchaseOrders ?? []);
+    setOrders(merged);
+    return merged;
   }, []);
 
-  const orders = purchaseOrders ?? [];
+  useEffect(() => {
+    let cancelled = false;
+    const storeOrders = useAppStore.getState().purchaseOrders ?? [];
+
+    Promise.all([
+      fetchJson<{ profiles?: Profile[] }>("/api/profiles"),
+      fetchPurchaseOrders(storeOrders),
+    ])
+      .then(([profilesData, purchaseOrdersData]) => {
+        if (cancelled) return;
+        setApiProfiles(profilesData?.profiles ?? []);
+        setOrders(purchaseOrdersData);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleCreate = useCallback(
-    (order: PurchaseOrder) => addPurchaseOrder(order),
-    [addPurchaseOrder]
+    async (order: PurchaseOrder) => {
+      const saved = await createPurchaseOrderApi(order);
+      if (!saved) {
+        alert("Could not save purchase order. Please check that the backend is running.");
+        return;
+      }
+      addPurchaseOrder(saved);
+      await loadOrders();
+    },
+    [addPurchaseOrder, loadOrders]
   );
 
   const handleUpdate = useCallback(
-    (order: PurchaseOrder) => {
-      replacePurchaseOrder(order);
+    async (order: PurchaseOrder) => {
+      const saved = await updatePurchaseOrderApi(order);
+      if (!saved) {
+        alert("Could not update purchase order. Please check that the backend is running.");
+        return;
+      }
+      replacePurchaseOrder(saved);
       setEditOpen(false);
       setEditingOrder(null);
+      await loadOrders();
     },
-    [replacePurchaseOrder]
+    [replacePurchaseOrder, loadOrders]
   );
 
   const handleDelete = useCallback(
-    (order: PurchaseOrder) => {
+    async (order: PurchaseOrder) => {
       if (!confirm(`Delete purchase order ${order.poNumber}?`)) return;
+      const ok = await deletePurchaseOrderApi(order.id);
+      if (!ok) {
+        alert("Could not delete purchase order. Please check that the backend is running.");
+        return;
+      }
       deletePurchaseOrder(order.id);
+      await loadOrders();
     },
-    [deletePurchaseOrder]
+    [deletePurchaseOrder, loadOrders]
   );
 
   const handleDownload = useCallback(

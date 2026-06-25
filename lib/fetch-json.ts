@@ -14,6 +14,11 @@ export function prefetchJson(url: string): void {
   void fetchJson(url);
 }
 
+export function invalidateJsonCache(url: string): void {
+  cache.delete(url);
+  inflight.delete(url);
+}
+
 export async function fetchJson<T extends object = Record<string, unknown>>(
   url: string,
   fallback: T = {} as T,
