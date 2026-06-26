@@ -4,11 +4,14 @@ import {
   findProfileByCode,
   getProfileDesignImage,
   getProfileDisplayName,
+  getProfileDyeCode,
+  getProfileWeightPerMeter,
 } from "@/lib/profile";
 
 export const DEFAULT_PO_UOM = "MM";
 
 export const purchaseOrderItemSchema = z.object({
+  dyeCode: z.string().optional().default(""),
   profileCode: z.string().min(1, "Profile is required"),
   profileName: z.string().optional().default(""),
   profileImage: z.string().optional().default(""),
@@ -24,26 +27,48 @@ export const purchaseOrderFormSchema = z.object({
   date: z.string().min(1, "Date is required"),
   vendorName: z.string().min(1, "Party is required"),
   vendorAddress: z.string().optional().default(""),
-  vehicleNumber: z.string().optional().default(""),
+  gstNo: z.string().optional().default(""),
+  personName: z.string().optional().default(""),
+  contactNo: z.string().optional().default(""),
   remarks: z.string().optional().default(""),
   items: z.array(purchaseOrderItemSchema).min(1, "Add at least one line item"),
 });
 
 export type PurchaseOrderFormData = z.infer<typeof purchaseOrderFormSchema>;
 
-/** Auto-suggest a total weight from kg/m, length (mm), and qty. */
+/** Keep length to one decimal place without rounding up. */
+export function normalizePurchaseOrderLengthMm(raw: string | number): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.floor(value * 10) / 10;
+}
+
+/** Total weight (kg) = KG/MTR × length × qty. */
 export function computePurchaseOrderItemWeight(
   kgPerMeter: number,
-  lengthMm: number,
+  length: number,
   qty: number
 ): number {
-  const lengthMeters = (Number(lengthMm) || 0) / 1000;
-  const weight = (Number(kgPerMeter) || 0) * lengthMeters * (Number(qty) || 0);
+  const normalizedLength = normalizePurchaseOrderLengthMm(length);
+  const weight = (Number(kgPerMeter) || 0) * normalizedLength * (Number(qty) || 0);
   return Math.round(weight * 100) / 100;
+}
+
+/** Qty = total weight (kg) ÷ (KG/MTR × length). */
+export function computePurchaseOrderItemQty(
+  kgPerMeter: number,
+  length: number,
+  totalWeightKg: number
+): number {
+  const normalizedLength = normalizePurchaseOrderLengthMm(length);
+  const perUnitWeight = (Number(kgPerMeter) || 0) * normalizedLength;
+  if (!perUnitWeight || !totalWeightKg) return 0;
+  return Math.round((Number(totalWeightKg) / perUnitWeight) * 100) / 100;
 }
 
 export function defaultPurchaseOrderItem(): PurchaseOrderFormData["items"][number] {
   return {
+    dyeCode: "",
     profileCode: "",
     profileName: "",
     profileImage: "",
@@ -65,12 +90,16 @@ export function generatePurchaseOrderNumber(existing: PurchaseOrder[]): string {
 
 export function buildPurchaseOrderItemFromProfile(
   profile: Profile
-): Pick<PurchaseOrderItem, "profileCode" | "profileName" | "profileImage" | "kgPerMeter"> {
+): Pick<
+  PurchaseOrderItem,
+  "dyeCode" | "profileCode" | "profileName" | "profileImage" | "kgPerMeter"
+> {
   return {
+    dyeCode: getProfileDyeCode(profile),
     profileCode: profile.code,
     profileName: getProfileDisplayName(profile),
     profileImage: getProfileDesignImage(profile),
-    kgPerMeter: profile.weightPerMeter ?? 0,
+    kgPerMeter: getProfileWeightPerMeter(profile),
   };
 }
 
@@ -82,14 +111,19 @@ export function buildPurchaseOrder(
   const items: PurchaseOrderItem[] = data.items.map((item) => {
     const profile = findProfileByCode(profiles, item.profileCode);
     return {
+      dyeCode:
+        item.dyeCode?.trim() ||
+        (profile ? getProfileDyeCode(profile) : undefined) ||
+        undefined,
       profileCode: item.profileCode,
       profileName:
         item.profileName?.trim() ||
         (profile ? getProfileDisplayName(profile) : item.profileCode),
       profileImage: item.profileImage?.trim() || (profile ? getProfileDesignImage(profile) : ""),
-      kgPerMeter: Number(item.kgPerMeter) || profile?.weightPerMeter || 0,
+      kgPerMeter:
+        Number(item.kgPerMeter) || (profile ? getProfileWeightPerMeter(profile) : 0),
       uom: item.uom?.trim() || DEFAULT_PO_UOM,
-      length: Number(item.length) || 0,
+      length: normalizePurchaseOrderLengthMm(item.length),
       qty: Number(item.qty) || 0,
       totalWeightKg: Number(item.totalWeightKg) || 0,
     };
@@ -101,7 +135,9 @@ export function buildPurchaseOrder(
     date: data.date,
     vendorName: data.vendorName.trim(),
     vendorAddress: data.vendorAddress?.trim() ?? "",
-    vehicleNumber: data.vehicleNumber?.trim() || undefined,
+    gstNo: data.gstNo?.trim() || undefined,
+    personName: data.personName?.trim() || undefined,
+    contactNo: data.contactNo?.trim() || undefined,
     remarks: data.remarks?.trim() || undefined,
     items,
   };

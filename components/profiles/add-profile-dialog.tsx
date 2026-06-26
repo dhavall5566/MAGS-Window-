@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { ProfileImageUploadField } from "@/components/profiles/profile-image-upload-field";
-import { ProfileLengthsEditor } from "@/components/profiles/profile-lengths-editor";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
@@ -21,11 +20,10 @@ import {
 import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
   createProfileFormSchema,
-  getProfileLengthsFieldError,
   PROFILE_FIELD_LABELS,
   type ProfileFormData,
 } from "@/lib/profile-form";
-import { buildProfileFromForm, previewRMtrRateFromLengthAndRate } from "@/lib/profile";
+import { buildProfileFromForm } from "@/lib/profile";
 import { fieldInvalid, resolveFieldError } from "@/lib/form-utils";
 import { getActiveSeriesLabels } from "@/lib/series";
 import { useAppStore } from "@/lib/store";
@@ -66,29 +64,24 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
     defaultValues: {
       seriesName: "",
       profileCode: "",
+      dyeCode: "",
       itemName: "",
-      lengthsInMeter: [0],
       powderCoatingRmm: 0,
-      rate: 0,
+      kgPerMeter: 0,
     },
   });
 
-  const lengthsInMeter = watch("lengthsInMeter");
-  const rate = watch("rate");
   const selectedSeriesName = watch("seriesName");
-  const primaryLength =
-    (lengthsInMeter ?? []).map((value) => Number(value)).find((value) => value > 0) ?? 0;
-  const ratePerMeter = previewRMtrRateFromLengthAndRate(primaryLength, Number(rate) || 0);
 
   const closeDialog = () => {
     setOpen(false);
     reset({
       seriesName: seriesOptions[0] ?? "",
       profileCode: "",
+      dyeCode: "",
       itemName: "",
-      lengthsInMeter: [0],
       powderCoatingRmm: 0,
-      rate: 0,
+      kgPerMeter: 0,
     });
     setDesignPreview(null);
   };
@@ -107,10 +100,10 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
           reset({
             seriesName: seriesOptions[0] ?? "",
             profileCode: "",
+            dyeCode: "",
             itemName: "",
-            lengthsInMeter: [0],
             powderCoatingRmm: 0,
-            rate: 0,
+            kgPerMeter: 0,
           });
         } else {
           closeDialog();
@@ -128,24 +121,26 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
           <DialogHeader>
             <DialogTitle>Add New Profile</DialogTitle>
             <DialogDescription>
-              Register an aluminium extrusion profile with dimensions, rate, and optional image.
+              Register an aluminium extrusion profile with specifications and optional image.
             </DialogDescription>
           </DialogHeader>
         </div>
         <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-5">
-            <FormSection title="Profile identity">
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <FormSection title="Profile details">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,168px)_minmax(0,1fr)] lg:items-start">
                 <ProfileImageUploadField
                   value={designPreview}
                   onChange={setDesignPreview}
-                  layout="card"
+                  layout="compact"
+                  className="mx-auto w-full max-w-[168px] lg:mx-0"
                 />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <FormField
                     label={PROFILE_FIELD_LABELS.seriesName}
                     htmlFor="seriesName"
                     required
+                    className="sm:col-span-2 xl:col-span-2"
                     error={resolveFieldError(isSubmitted, errors.seriesName)}
                     hint={
                       seriesOptions.length === 0
@@ -182,10 +177,23 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
                     />
                   </FormField>
                   <FormField
+                    label={PROFILE_FIELD_LABELS.dyeCode}
+                    htmlFor="dyeCode"
+                    error={resolveFieldError(isSubmitted, errors.dyeCode)}
+                  >
+                    <Input
+                      id="dyeCode"
+                      placeholder="e.g. 1001"
+                      className="font-mono"
+                      aria-invalid={fieldInvalid(isSubmitted, errors.dyeCode)}
+                      {...register("dyeCode")}
+                    />
+                  </FormField>
+                  <FormField
                     label={PROFILE_FIELD_LABELS.profileName}
                     htmlFor="itemName"
                     required
-                    className="sm:col-span-2"
+                    className="sm:col-span-2 xl:col-span-4"
                     error={resolveFieldError(isSubmitted, errors.itemName)}
                   >
                     <Input
@@ -195,67 +203,41 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
                       {...register("itemName")}
                     />
                   </FormField>
+                  <FormField
+                    label={PROFILE_FIELD_LABELS.powderCoatingRmm}
+                    htmlFor="powderCoatingRmm"
+                    required
+                    className="sm:col-span-1 xl:col-span-2"
+                    error={resolveFieldError(isSubmitted, errors.powderCoatingRmm)}
+                  >
+                    <Input
+                      id="powderCoatingRmm"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="tabular-nums"
+                      aria-invalid={fieldInvalid(isSubmitted, errors.powderCoatingRmm)}
+                      {...register("powderCoatingRmm")}
+                    />
+                  </FormField>
+                  <FormField
+                    label={PROFILE_FIELD_LABELS.kgPerMeter}
+                    htmlFor="kgPerMeter"
+                    required
+                    className="sm:col-span-1 xl:col-span-2"
+                    error={resolveFieldError(isSubmitted, errors.kgPerMeter)}
+                  >
+                    <Input
+                      id="kgPerMeter"
+                      type="number"
+                      step="0.0001"
+                      min="0"
+                      className="tabular-nums"
+                      aria-invalid={fieldInvalid(isSubmitted, errors.kgPerMeter)}
+                      {...register("kgPerMeter")}
+                    />
+                  </FormField>
                 </div>
-              </div>
-            </FormSection>
-
-            <FormSection title="Dimensions & pricing">
-              <ProfileLengthsEditor
-                value={lengthsInMeter ?? [0]}
-                onChange={(lengths) =>
-                  setValue("lengthsInMeter", lengths, { shouldValidate: isSubmitted })
-                }
-                error={getProfileLengthsFieldError(errors, isSubmitted)}
-              />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <FormField
-                  label={PROFILE_FIELD_LABELS.rate}
-                  htmlFor="rate"
-                  required
-                  error={resolveFieldError(isSubmitted, errors.rate)}
-                >
-                  <Input
-                    id="rate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="tabular-nums"
-                    aria-invalid={fieldInvalid(isSubmitted, errors.rate)}
-                    {...register("rate")}
-                  />
-                </FormField>
-                <FormField
-                  label={PROFILE_FIELD_LABELS.powderCoatingRmm}
-                  htmlFor="powderCoatingRmm"
-                  required
-                  error={resolveFieldError(isSubmitted, errors.powderCoatingRmm)}
-                >
-                  <Input
-                    id="powderCoatingRmm"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="tabular-nums"
-                    aria-invalid={fieldInvalid(isSubmitted, errors.powderCoatingRmm)}
-                    {...register("powderCoatingRmm")}
-                  />
-                </FormField>
-                <FormField
-                  label={PROFILE_FIELD_LABELS.ratePerMeter}
-                  htmlFor="ratePerMeter"
-                  hint="Calculated from length and rate"
-                  className="sm:col-span-2 xl:col-span-1"
-                >
-                  <Input
-                    id="ratePerMeter"
-                    type="number"
-                    step="0.01"
-                    value={ratePerMeter || ""}
-                    disabled
-                    readOnly
-                    className="bg-muted tabular-nums"
-                  />
-                </FormField>
               </div>
             </FormSection>
           </div>

@@ -20,6 +20,12 @@ export function getProfileDesignImage(profile: Pick<Profile, "design" | "image">
   return "";
 }
 
+export function getProfileDyeCode(
+  profile: Pick<Profile, "dyeCode" | "diaCode">
+): string {
+  return String(profile.dyeCode ?? profile.diaCode ?? "").trim();
+}
+
 export function parseProfileCodeParts(profileCode: string): {
   series: string;
   code: string;
@@ -323,7 +329,6 @@ export function getChallanRatePerMeter(
     | "purchaseUnitQty"
     | "conversionUnitQty"
     | "weightPerMeter"
-    | "lengthsInMeter"
   >,
   lengthInMeter?: number
 ): number {
@@ -393,7 +398,7 @@ export function formatPurchaseUnit(
 export function getProfileRmmValue(
   profile: Pick<
     Profile,
-    "purchaseUnitQty" | "rmm" | "lengthsInMeter" | "conversionUnitQty" | "weightPerMeter"
+    "purchaseUnitQty" | "rmm" | "conversionUnitQty" | "weightPerMeter"
   >,
   lengthInMeter?: number
 ): number {
@@ -479,7 +484,6 @@ function convertProfileLengthStorage(profile: Profile): Profile {
     standardLength: profile.standardLength
       ? convertRmmStorageToMeters(profile.standardLength)
       : profile.standardLength,
-    lengthsInMeter: profile.lengthsInMeter?.map(convertRmmStorageToMeters),
   };
 }
 
@@ -549,13 +553,13 @@ export function isLikelyWeightNotLength(
   length: number,
   profile: Pick<
     Profile,
-    "rmm" | "conversionUnitQty" | "weightPerMeter" | "lengthsInMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   >
 ): boolean {
   const weightPerMeter = getStoredWeightPerMeter(profile);
   if (weightPerMeter && Math.abs(length - weightPerMeter) < 0.15) return true;
 
-  const rawCandidates = [profile.rmm ?? 0, ...(profile.lengthsInMeter ?? [])]
+  const rawCandidates = [profile.rmm ?? 0]
     .map(Number)
     .filter((value) => value > 0);
   const maxRaw = rawCandidates.length ? Math.max(...rawCandidates) : 0;
@@ -568,27 +572,19 @@ export function isLikelyWeightNotLength(
 function collectProfileLengthCandidates(
   profile: Pick<
     Profile,
-    "lengthsInMeter" | "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   >
 ): number[] {
-  return sanitizeLengthCandidates(profile, [
-    profile.rmm ?? 0,
-    ...(profile.lengthsInMeter ?? []),
-  ]);
+  return sanitizeLengthCandidates(profile, [profile.rmm ?? 0]);
 }
 
 export function coalesceProfileRecords(first: Profile, second: Profile): Profile {
   const merged: Profile = { ...first, ...second };
-  const mergedLengths = sanitizeLengthCandidates(merged, [
-    ...(first.lengthsInMeter ?? []),
-    ...(second.lengthsInMeter ?? []),
-    first.rmm ?? 0,
-    second.rmm ?? 0,
-  ]);
+  const mergedLength = Math.max(first.rmm ?? 0, second.rmm ?? 0);
 
   return {
     ...merged,
-    lengthsInMeter: mergedLengths.sort((a, b) => a - b),
+    rmm: mergedLength,
     purchaseUnitQty: Math.max(first.purchaseUnitQty ?? 0, second.purchaseUnitQty ?? 0),
     conversionUnitQty: Math.max(first.conversionUnitQty ?? 0, second.conversionUnitQty ?? 0),
   };
@@ -598,7 +594,7 @@ export function coalesceProfileRecords(first: Profile, second: Profile): Profile
 function deriveCanonicalProfileLength(
   profile: Pick<
     Profile,
-    "rmm" | "lengthsInMeter" | "purchaseUnitQty" | "conversionUnitQty" | "weightPerMeter"
+    "rmm" | "purchaseUnitQty" | "conversionUnitQty" | "weightPerMeter"
   >
 ): number {
   const fromPurchase =
@@ -631,7 +627,7 @@ function deriveCanonicalProfileLength(
 function sanitizeLengthCandidates(
   profile: Pick<
     Profile,
-    "lengthsInMeter" | "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   >,
   candidates: number[]
 ): number[] {
@@ -650,7 +646,7 @@ function sanitizeLengthCandidates(
 export function normalizeProfileLengths(
   profile: Pick<
     Profile,
-    "lengthsInMeter" | "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   >
 ): number[] {
   const valid = collectProfileLengthCandidates(profile);
@@ -660,7 +656,7 @@ export function normalizeProfileLengths(
 export function getProfileLengths(
   profile: Pick<
     Profile,
-    "lengthsInMeter" | "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   > | null | undefined
 ): number[] {
   if (!profile) return [];
@@ -670,7 +666,7 @@ export function getProfileLengths(
 export function getPrimaryProfileLength(
   profile: Pick<
     Profile,
-    "lengthsInMeter" | "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   > | null | undefined
 ): number {
   if (!profile) return 0;
@@ -681,7 +677,7 @@ export function getPrimaryProfileLength(
 export function getProfileLengthOptions(
   profile: Pick<
     Profile,
-    "lengthsInMeter" | "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
+    "rmm" | "conversionUnitQty" | "weightPerMeter" | "purchaseUnitQty"
   > | null | undefined
 ): number[] {
   return getProfileLengths(profile);
@@ -705,54 +701,24 @@ export function buildProfileFromForm(
   data: {
     seriesName: string;
     profileCode: string;
+    dyeCode?: string;
     itemName: string;
-    lengthsInMeter: number[];
     powderCoatingRmm: number;
-    rate: number;
+    kgPerMeter: number;
   },
   image: string,
   id?: string,
   createdAt?: string
 ): Profile {
-  const lengthsInMeter = normalizeProfileLengths({
-    lengthsInMeter: data.lengthsInMeter,
-    rmm: 0,
-    purchaseUnitQty: 0,
-    conversionUnitQty: 0,
-    weightPerMeter: 0,
-  });
   const primaryLength =
-    sanitizeLengthCandidates(
-      {
-        lengthsInMeter: data.lengthsInMeter,
-        rmm: 0,
-        purchaseUnitQty: 0,
-        conversionUnitQty: 0,
-        weightPerMeter: 0,
-      },
-      data.lengthsInMeter
-    )[0] ??
-    lengthsInMeter[0] ??
-    0;
+    data.powderCoatingRmm > 0
+      ? roundLength(data.powderCoatingRmm / RMM_TO_METER_FACTOR)
+      : 0;
   const purchaseUnitQty = primaryLength
     ? roundLength(primaryLength * RMM_TO_METER_FACTOR)
-    : 0;
-  const bootstrapRatePerMeter = calculateRatePerMeter(primaryLength, data.rate);
-  const conversionUnitQty = deriveConversionUnitQty(
-    primaryLength,
-    data.rate,
-    bootstrapRatePerMeter
-  );
-  const weightPerMeter =
-    conversionUnitQty > 0 && purchaseUnitQty
-      ? Math.round((purchaseUnitQty / conversionUnitQty) * 10000) / 10000
+    : data.powderCoatingRmm > 0
+      ? roundLength(data.powderCoatingRmm)
       : 0;
-  const ratePerMeter = calculateRMtrRate({
-    rate: data.rate,
-    weightPerMeter,
-    purchaseUnitQty,
-    conversionUnitQty,
-  });
   const profileNoMatch = data.profileCode.match(/[-/](.+)$/);
   const profileNo = profileNoMatch?.[1] ?? "1";
 
@@ -762,25 +728,22 @@ export function buildProfileFromForm(
     name: data.itemName,
     seriesName: data.seriesName,
     profileNo,
-    lengthsInMeter,
+    dyeCode: data.dyeCode?.trim() || undefined,
     rmm: primaryLength,
     powderCoatingRmm: data.powderCoatingRmm,
-    rate: data.rate,
-    ratePerMeter,
+    ratePerMeter: 0,
     category: "",
     alloy: "",
     finish: "",
-    weightPerMeter,
+    weightPerMeter: Math.round(data.kgPerMeter * 10000) / 10000,
     standardLength: primaryLength,
     image,
     design: image,
     designName: data.itemName,
     purchaseUnitQty,
     purchaseUnitMetric: "KG",
-    conversionUnitQty,
+    conversionUnitQty: 0,
     conversionUnitMetric: CONVERSION_UNIT_METRIC,
-    perKgRate: data.rate,
-    priceHistory: buildInitialPriceHistory(data.rate),
     description: data.itemName,
     minStock: 0,
     currentStock: 0,
@@ -792,47 +755,27 @@ export function buildProfileFromForm(
 
 export function normalizeProfile(profile: Profile): Profile {
   const base = convertProfileLengthStorage(profile);
-  const canonicalLength = deriveCanonicalProfileLength(base);
-  const lengthsInMeter = normalizeProfileLengths({
-    ...base,
-    rmm: canonicalLength,
-  });
-  const rate = base.rate ?? base.perKgRate ?? 0;
-  const purchaseUnitQty = derivePurchaseUnitQtyFromLength(base, canonicalLength);
-  const conversionUnitQty =
-    base.conversionUnitQty ||
-    deriveConversionUnitQty(
-      canonicalLength,
-      rate,
-      calculateRatePerMeter(canonicalLength, rate)
-    );
-  const weightPerMeter =
-    conversionUnitQty > 0 && purchaseUnitQty
-      ? Math.round((purchaseUnitQty / conversionUnitQty) * 10000) / 10000
-      : base.weightPerMeter ?? 0;
-  const ratePerMeter = calculateRMtrRate({
-    ...base,
-    rate,
-    weightPerMeter,
-    purchaseUnitQty,
-    conversionUnitQty,
-  });
+  const {
+    rate: _rate,
+    perKgRate: _perKgRate,
+    priceHistory: _priceHistory,
+    ...baseWithoutRate
+  } = base;
+  const canonicalLength = deriveCanonicalProfileLength(baseWithoutRate);
+  const purchaseUnitQty = derivePurchaseUnitQtyFromLength(baseWithoutRate, canonicalLength);
 
   return {
-    ...base,
-    lengthsInMeter,
+    ...baseWithoutRate,
+    dyeCode: getProfileDyeCode(baseWithoutRate) || undefined,
     rmm: canonicalLength,
-    powderCoatingRmm: base.powderCoatingRmm ?? 0,
-    rate,
-    ratePerMeter,
-    perKgRate: rate,
-    weightPerMeter,
+    powderCoatingRmm: baseWithoutRate.powderCoatingRmm ?? 0,
+    ratePerMeter: 0,
+    weightPerMeter: getProfileWeightPerMeter(baseWithoutRate),
     standardLength: canonicalLength,
     purchaseUnitQty,
-    conversionUnitQty,
-    image: sanitizeProfileImageUrl(base.image),
-    design: sanitizeProfileImageUrl(base.design),
-    priceHistory: Array.isArray(base.priceHistory) ? base.priceHistory : [],
+    conversionUnitQty: baseWithoutRate.conversionUnitQty ?? 0,
+    image: sanitizeProfileImageUrl(baseWithoutRate.image),
+    design: sanitizeProfileImageUrl(baseWithoutRate.design),
   };
 }
 

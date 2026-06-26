@@ -13,19 +13,15 @@ import { ProfileRowActions } from "@/components/profiles/profile-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { fetchJson } from "@/lib/fetch-json";
 import {
-  appendPriceHistory,
-  formatCurrency,
-  formatRateValue,
   getProfileCodeValue,
   getProfileDesignImage,
+  getProfileDyeCode,
   getPrimaryProfileLength,
-  getProfileRatePerMeter,
   getProfileRmmValue,
+  getProfileWeightPerMeter,
   getProfileStatusLabel,
-  calculateRMtrRateFromRmmAndRate,
   normalizeProfile,
 } from "@/lib/profile";
-import { ProfileLengthsCell } from "@/components/profiles/profile-lengths-cell";
 import { PROFILE_FIELD_LABELS } from "@/lib/profile-form";
 import { useAppStore } from "@/lib/store";
 import { formatNumber } from "@/lib/utils";
@@ -105,23 +101,14 @@ export default function ProfilesPage() {
     const q = query.toLowerCase();
     const name = profile.name?.toLowerCase() ?? "";
     const code = getProfileCodeValue(profile).toLowerCase();
-    return name.includes(q) || code.includes(q);
+    const dyeCode = getProfileDyeCode(profile).toLowerCase();
+    return name.includes(q) || code.includes(q) || dyeCode.includes(q);
   }, []);
 
   const handleUpdateProfile = (id: string, updates: Partial<Profile>) => {
     updateProfile(id, updates);
     setProfiles((prev) =>
-      (prev ?? []).map((p) => {
-        if (p.id !== id) return p;
-        const rate = updates.rate ?? updates.perKgRate ?? p.rate ?? p.perKgRate ?? 0;
-        const previousRate = p.rate ?? p.perKgRate ?? 0;
-        const priceHistory =
-          (updates.rate !== undefined || updates.perKgRate !== undefined) &&
-          rate !== previousRate
-            ? appendPriceHistory(p.priceHistory, previousRate, rate)
-            : p.priceHistory ?? [];
-        return { ...p, ...updates, rate, perKgRate: rate, priceHistory };
-      })
+      (prev ?? []).map((p) => (p.id === id ? { ...p, ...updates } : p))
     );
   };
 
@@ -217,13 +204,13 @@ export default function ProfilesPage() {
         render: (row: Profile) => row.code || row.seriesName,
       },
       {
-        key: "lengthsInMeter",
-        header: PROFILE_FIELD_LABELS.rmm,
-        className: "whitespace-nowrap",
-        align: "center" as const,
+        key: "dyeCode",
+        header: PROFILE_FIELD_LABELS.dyeCode,
+        className: "whitespace-nowrap font-mono text-xs",
+        align: "left" as const,
         hideBelow: "md" as const,
-        sortValue: (row: Profile) => row.lengthsInMeter?.[0] ?? row.rmm ?? 0,
-        render: (row: Profile) => <ProfileLengthsCell profile={row} />,
+        sortValue: (row: Profile) => getProfileDyeCode(row),
+        render: (row: Profile) => getProfileDyeCode(row) || "\u2014",
       },
       {
         key: "rmm",
@@ -235,32 +222,19 @@ export default function ProfilesPage() {
         render: (row: Profile) => {
           const length = getPrimaryProfileLength(row) || row.rmm || 0;
           const rmmValue = getProfileRmmValue(row, Number(length) || undefined);
-          return rmmValue > 0 ? formatNumber(rmmValue, 2) : "—";
+          return rmmValue > 0 ? formatNumber(rmmValue, 2) : "\u2014";
         },
       },
       {
-        key: "rate",
-        header: PROFILE_FIELD_LABELS.rate,
+        key: "weightPerMeter",
+        header: PROFILE_FIELD_LABELS.kgPerMeter,
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
         hideBelow: "md" as const,
-        sortValue: (row: Profile) => row.rate ?? row.perKgRate ?? 0,
-        render: (row: Profile) => formatRateValue(row.rate ?? row.perKgRate),
-      },
-      {
-        key: "ratePerMeter",
-        header: "R MTR Rate",
-        className: "whitespace-nowrap tabular-nums",
-        align: "center" as const,
-        hideBelow: "lg" as const,
-        sortValue: (row: Profile) =>
-          getProfileRatePerMeter(row),
+        sortValue: (row: Profile) => getProfileWeightPerMeter(row),
         render: (row: Profile) => {
-          const length = getPrimaryProfileLength(row) || row.rmm || 0;
-          const perKg = row.rate ?? row.perKgRate ?? 0;
-          const rmm = getProfileRmmValue(row, Number(length) || undefined);
-          const value = calculateRMtrRateFromRmmAndRate(rmm, Number(perKg) || 0);
-          return formatCurrency(value > 0 ? value : getProfileRatePerMeter(row));
+          const value = getProfileWeightPerMeter(row);
+          return value > 0 ? formatNumber(value, 4) : "\u2014";
         },
       },
       {
@@ -306,9 +280,9 @@ export default function ProfilesPage() {
         data={filteredProfiles}
         columns={columns}
         isLoading={isLoading}
-        loadingMessage="Loading profiles…"
+        loadingMessage="Loading profiles\u2026"
         searchFilter={handleProfileSearch}
-        searchPlaceholder="Search by profile name or profile code..."
+        searchPlaceholder="Search by profile name, code, or dye code..."
         filterContent={filterContent}
         filtersActive={filtersActive}
         onClearFilters={clearFilters}

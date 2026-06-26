@@ -132,10 +132,12 @@ export async function generatePurchaseOrderPDF(
   const logoW = 26;
   const titleH = 6;
   const nameH = 9;
-  const addrH = 6;
-  const headerBlockH = titleH + nameH + addrH;
+  const addrFontSize = 9;
   const rightX = left + logoW;
   const rightW = contentWidth - logoW;
+  const addrLines = doc.splitTextToSize(PURCHASE_ORDER.addressLine, rightW - 4);
+  const addrH = Math.max(7, addrLines.length * 4.2 + 2);
+  const headerBlockH = titleH + nameH + addrH;
 
   // Logo cell
   const logoData = await resolveImageDataUrl(COMPANY.logo);
@@ -164,9 +166,8 @@ export async function generatePurchaseOrderPDF(
     size: 15,
     align: "center",
   });
-  const addrLines = doc.splitTextToSize(PURCHASE_ORDER.addressLine, rightW - 4);
-  cellText(addrLines[0] ?? "", rightX + rightW / 2, y + titleH + nameH + 4, {
-    size: 7,
+  cellText(addrLines, rightX + rightW / 2, y + titleH + nameH + 4, {
+    size: addrFontSize,
     align: "center",
     color: C.inkSoft,
   });
@@ -181,12 +182,12 @@ export async function generatePurchaseOrderPDF(
 
   y += headerBlockH;
 
-  // ---- Email | Web row (full width) ----
+  // ---- Email | Phone row (full width) ----
   const contactH = 6;
   const midX = left + contentWidth / 2;
   doc.setFillColor(...C.white);
   cellText(`Email: ${PURCHASE_ORDER.email}`, midX - 2, y + 4, { size: 7.5, align: "right" });
-  cellText(`Web: ${PURCHASE_ORDER.website}`, midX + contentWidth / 2 - 2, y + 4, {
+  cellText(PURCHASE_ORDER.phone, midX + contentWidth / 2 - 2, y + 4, {
     size: 7.5,
     align: "right",
   });
@@ -201,27 +202,36 @@ export async function generatePurchaseOrderPDF(
   const metaLabelW = 22;
   const partyLabelW = 22;
   const rowH = 6;
-  const partyRows = [
-    ["Party Name", order.vendorName?.trim() || "-"],
-  ] as const;
-  const addressValue = order.vendorAddress?.trim() || "-";
+  const partyName = order.vendorName?.trim() || "";
+  const addressValue = order.vendorAddress?.trim() || "";
   const addressLines = doc.splitTextToSize(addressValue, partyLeftW - partyLabelW - 4);
   const addressH = Math.max(rowH * 2, addressLines.length * 3.6 + 4);
-  const metaBlockH = rowH + addressH;
-
-  // left labels/values
-  cellText("Party Name", left + 1.5, y + 4, { bold: true, size: 6.8, color: C.inkSoft });
-  cellText(partyRows[0][1], left + partyLabelW, y + 4, { bold: true, size: 8 });
-  cellText("Address", left + 1.5, y + rowH + 4, { bold: true, size: 6.8, color: C.inkSoft });
-  cellText(addressLines, left + partyLabelW, y + rowH + 4, { size: 7.5 });
-
-  // right meta rows
-  const metaRows = [
-    ["D.C. No", order.poNumber?.trim() || "-"],
-    ["Date", formatPoDate(order.date)],
-    ["V. Number", order.vehicleNumber?.trim() || ""],
+  const afterAddressRows = [
+    ["Person Name", order.personName?.trim() || ""],
+    ["Contact No.", order.contactNo?.trim() || ""],
+    ["GST No.", order.gstNo?.trim() || ""],
   ] as const;
-  const metaRowH = metaBlockH / 3;
+  const leftBlockH = rowH + addressH + rowH * afterAddressRows.length;
+  const metaRows = [
+    ["D.C. No", ""],
+    ["Date", formatPoDate(order.date)],
+  ] as const;
+  const metaBlockH = Math.max(leftBlockH, rowH * metaRows.length);
+
+  cellText("Party Name", left + 1.5, y + 4, { bold: true, size: 6.8, color: C.inkSoft });
+  cellText(partyName, left + partyLabelW, y + 4, { bold: true, size: 8 });
+
+  const addressY = y + rowH;
+  cellText("Address", left + 1.5, addressY + 4, { bold: true, size: 6.8, color: C.inkSoft });
+  cellText(addressLines, left + partyLabelW, addressY + 4, { size: 7.5 });
+
+  const afterAddressY = addressY + addressH;
+  afterAddressRows.forEach(([label, value], i) => {
+    cellText(label, left + 1.5, afterAddressY + i * rowH + 4, { bold: true, size: 6.8, color: C.inkSoft });
+    cellText(value, left + partyLabelW, afterAddressY + i * rowH + 4, { bold: true, size: 8 });
+  });
+
+  const metaRowH = metaBlockH / metaRows.length;
   metaRows.forEach(([label, value], i) => {
     const ry = y + i * metaRowH;
     cellText(label, metaX + 1.5, ry + metaRowH / 2 + 1, { bold: true, size: 6.8, color: C.inkSoft });
@@ -232,12 +242,16 @@ export async function generatePurchaseOrderPDF(
 
   // borders for meta block
   drawLine(left, y, right, y);
-  drawLine(left, y + rowH, metaX, y + rowH); // between party name & address (left col only)
   drawLine(left, y + metaBlockH, right, y + metaBlockH);
   drawLine(left, y, left, y + metaBlockH);
   drawLine(right, y, right, y + metaBlockH);
   drawLine(metaX, y, metaX, y + metaBlockH);
   drawLine(left + partyLabelW - 2, y, left + partyLabelW - 2, y + metaBlockH);
+  drawLine(left, y + rowH, metaX, y + rowH);
+  drawLine(left, afterAddressY, metaX, afterAddressY);
+  for (let i = 1; i < afterAddressRows.length; i += 1) {
+    drawLine(left, afterAddressY + i * rowH, metaX, afterAddressY + i * rowH);
+  }
 
   y += metaBlockH;
 
@@ -293,7 +307,7 @@ export async function generatePurchaseOrderPDF(
   const body = items.map((item, index) => [
     String(index + 1),
     "",
-    item.profileCode || "-",
+    item.profileCode || "",
     formatKgPerMeter(item.kgPerMeter),
     item.uom?.trim() || "MM",
     formatLength(item.length),

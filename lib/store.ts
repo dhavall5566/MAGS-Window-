@@ -7,11 +7,7 @@ import { mockVendors } from "@/lib/mock-data/vendors";
 import { mockUsers } from "@/lib/mock-data/users";
 import { enrichChallanVendorDetails, normalizeVendor } from "@/lib/vendor";
 import { getManualConsumption } from "@/lib/challan-consumption";
-import {
-  appendPriceHistory,
-  buildInitialPriceHistory,
-  normalizeProfile,
-} from "@/lib/profile";
+import { normalizeProfile } from "@/lib/profile";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "@/lib/app-settings";
 import {
   DEFAULT_ROLE_PERMISSIONS,
@@ -105,31 +101,13 @@ export const useAppStore = create<AppState>()(
       setProfiles: (profiles) => set({ profiles }),
       addProfile: (profile) =>
         set((s) => ({
-          profiles: [
-            ...(s.profiles ?? []),
-            {
-              ...profile,
-              perKgRate: profile.perKgRate ?? 0,
-              priceHistory:
-                profile.priceHistory?.length
-                  ? profile.priceHistory
-                  : buildInitialPriceHistory(profile.perKgRate ?? 0),
-            },
-          ],
+          profiles: [...(s.profiles ?? []), profile],
         })),
       updateProfile: (id, updates) =>
         set((s) => ({
-          profiles: (s.profiles ?? []).map((p) => {
-            if (p.id !== id) return p;
-            const rate = updates.rate ?? updates.perKgRate ?? p.rate ?? p.perKgRate ?? 0;
-            const previousRate = p.rate ?? p.perKgRate ?? 0;
-            const priceHistory =
-              (updates.rate !== undefined || updates.perKgRate !== undefined) &&
-              rate !== previousRate
-                ? appendPriceHistory(p.priceHistory, previousRate, rate)
-                : updates.priceHistory ?? p.priceHistory ?? [];
-            return { ...p, ...updates, rate, perKgRate: rate, priceHistory };
-          }),
+          profiles: (s.profiles ?? []).map((p) =>
+            p.id === id ? { ...p, ...updates } : p
+          ),
         })),
       toggleProfileStatus: (id) =>
         set((s) => ({

@@ -34,15 +34,16 @@ export interface Profile {
   name: string;
   seriesName: string;
   profileNo: string;
-  /** DIA / dye code from profile master (e.g. 1001). */
+  /** Dye code from profile master (e.g. 1001). Legacy imports may use diaCode. */
+  dyeCode?: string;
+  /** @deprecated Use dyeCode. Kept for backward compatibility with older DB rows. */
   diaCode?: string;
-  /** Available lengths (m) for this profile — qty and kg/m are shared across all. */
-  lengthsInMeter?: number[];
   /** Primary length in meters (MTR). Legacy field name from RMM storage. */
   rmm: number;
   /** RMM value used for powder coating calculations. */
   powderCoatingRmm?: number;
-  rate: number;
+  /** @deprecated Removed from profile master. Legacy rows may still include this. */
+  rate?: number;
   ratePerMeter: number;
   category: string;
   alloy: string;
@@ -56,8 +57,10 @@ export interface Profile {
   purchaseUnitMetric: string;
   conversionUnitQty: number;
   conversionUnitMetric: string;
-  perKgRate: number;
-  priceHistory: ProfilePriceHistory[];
+  /** @deprecated Removed from profile master. Legacy rows may still include this. */
+  perKgRate?: number;
+  /** @deprecated Removed from profile master. Legacy rows may still include this. */
+  priceHistory?: ProfilePriceHistory[];
   description: string;
   minStock: number;
   currentStock: number;
@@ -219,6 +222,7 @@ export interface ReturnChallan extends ChallanVendorDetails {
 export type Challan = OutwardChallan | PowderCoatingChallan | ReturnChallan;
 
 export interface PurchaseOrderItem {
+  dyeCode?: string;
   profileCode: string;
   profileName: string;
   profileImage: string;
@@ -240,8 +244,9 @@ export interface PurchaseOrder {
   date: string;
   vendorName: string;
   vendorAddress: string;
-  /** Vehicle number (shown as "V. Number"). */
-  vehicleNumber?: string;
+  gstNo?: string;
+  personName?: string;
+  contactNo?: string;
   remarks?: string;
   items: PurchaseOrderItem[];
 }

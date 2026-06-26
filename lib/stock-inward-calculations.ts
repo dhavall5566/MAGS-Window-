@@ -1,4 +1,4 @@
-import { findProfileByCode, getProfileCodeValue } from "@/lib/profile";
+import { findProfileByCode, getProfileCodeValue, getProfileDyeCode } from "@/lib/profile";
 import type { Profile, StockInward } from "@/types";
 
 /** Fixed kg/m for stock inward until profile-specific values are enabled. */
@@ -27,16 +27,16 @@ export function normalizeDyeCode(dyeCode: string): string {
   return trimmed;
 }
 
-/** Resolve profiles by dye / DIA code (numeric pad or profile diaCode field). */
+/** Resolve profiles by dye code (numeric pad or profile dyeCode field). */
 export function findProfilesByDyeCode(profiles: Profile[], dyeCode: string): Profile[] {
   const normalized = normalizeDyeCode(dyeCode);
   if (!normalized) return [];
 
-  const byDiaCode = profiles.filter((item) => {
-    const profileDia = String(item.diaCode ?? "").trim();
-    return profileDia === normalized || profileDia === dyeCode.trim();
+  const byDyeCode = profiles.filter((item) => {
+    const profileDye = getProfileDyeCode(item);
+    return profileDye === normalized || profileDye === dyeCode.trim();
   });
-  if (byDiaCode.length > 0) return byDiaCode;
+  if (byDyeCode.length > 0) return byDyeCode;
 
   const mappedCode = STOCK_INWARD_DYE_CODE_TO_PROFILE[normalized];
   if (!mappedCode) return [];

@@ -5,35 +5,22 @@ import { getProfileCodeValue } from "@/lib/profile";
 export const PROFILE_FIELD_LABELS = {
   seriesName: "Series Name",
   profileName: "Profile Name",
-  rmm: "Length in meter",
+  dyeCode: "Dye Code",
   powderCoatingRmm: "RMM (For Powder Coating)",
-  rate: "Rate",
-  ratePerMeter: "Kg Per Meter",
+  kgPerMeter: "Kg Per Meter",
 } as const;
-
-const lengthsInMeterSchema = z.preprocess(
-  (value) => {
-    if (!Array.isArray(value)) return [];
-    return value
-      .map((entry) => Number(entry))
-      .filter((length) => Number.isFinite(length) && length > 0);
-  },
-  z
-    .array(z.number().min(0.01, "Length must be greater than 0"))
-    .min(1, `Add at least one ${PROFILE_FIELD_LABELS.rmm.toLowerCase()}`)
-);
 
 export const profileFormSchema = z.object({
   seriesName: z.string().min(1, `${PROFILE_FIELD_LABELS.seriesName} is required`),
   profileCode: z.string().min(1, "Profile code is required"),
+  dyeCode: z.string().optional().default(""),
   itemName: z.string().min(1, `${PROFILE_FIELD_LABELS.profileName} is required`),
-  lengthsInMeter: lengthsInMeterSchema,
   powderCoatingRmm: z.coerce
     .number()
     .min(0, `${PROFILE_FIELD_LABELS.powderCoatingRmm} must be 0 or greater`),
-  rate: z.coerce
+  kgPerMeter: z.coerce
     .number()
-    .min(0, `${PROFILE_FIELD_LABELS.rate} is required`),
+    .min(0, `${PROFILE_FIELD_LABELS.kgPerMeter} must be 0 or greater`),
 });
 
 export type ProfileFormData = z.infer<typeof profileFormSchema>;
@@ -87,22 +74,4 @@ export function createProfileFormSchema(
       });
     }
   });
-}
-
-export function getProfileLengthsFieldError(
-  errors: { lengthsInMeter?: { message?: string; root?: { message?: string } } | Array<{ message?: string } | undefined> },
-  isSubmitted: boolean
-): string | undefined {
-  if (!isSubmitted || !errors.lengthsInMeter) return undefined;
-  const field = errors.lengthsInMeter;
-  if (typeof field === "object" && field !== null && "message" in field && field.message) {
-    return field.message;
-  }
-  if (typeof field === "object" && field !== null && "root" in field && field.root?.message) {
-    return field.root.message;
-  }
-  if (Array.isArray(field)) {
-    return field.find((entry) => entry?.message)?.message;
-  }
-  return undefined;
 }

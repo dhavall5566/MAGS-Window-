@@ -17,20 +17,15 @@ import { FormField, FormSection } from "@/components/shared/form-field";
 import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
   createProfileFormSchema,
-  getProfileLengthsFieldError,
   PROFILE_FIELD_LABELS,
   type ProfileFormData,
 } from "@/lib/profile-form";
-import { ProfileLengthsEditor } from "@/components/profiles/profile-lengths-editor";
 import {
-  appendPriceHistory,
   buildProfileFromForm,
   getProfileDesignImage,
-  getProfileLengths,
-  getProfileRmmValue,
+  getProfileDyeCode,
+  getProfileWeightPerMeter,
   normalizeProfile,
-  calculateRMtrRateFromRmmAndRate,
-  RMM_TO_METER_FACTOR,
 } from "@/lib/profile";
 import { fieldInvalid, resolveFieldError } from "@/lib/form-utils";
 import { getSeriesFormOptions } from "@/lib/series";
@@ -81,37 +76,26 @@ export function EditProfileDialog({
     defaultValues: {
       seriesName: "",
       profileCode: "",
+      dyeCode: "",
       itemName: "",
-      lengthsInMeter: [0],
       powderCoatingRmm: 0,
-      rate: 0,
+      kgPerMeter: 0,
     },
   });
 
-  const lengthsInMeter = watch("lengthsInMeter");
-  const rate = watch("rate");
   const selectedSeriesName = watch("seriesName");
-  const primaryLength =
-    (lengthsInMeter ?? []).map((value) => Number(value)).find((value) => value > 0) ?? 0;
-  const rmm = profile
-    ? getProfileRmmValue(profile, primaryLength > 0 ? primaryLength : undefined)
-    : primaryLength * RMM_TO_METER_FACTOR;
-  const ratePerMeter = calculateRMtrRateFromRmmAndRate(rmm, Number(rate) || 0);
-
-  const lengthsError = getProfileLengthsFieldError(errors, isSubmitted);
 
   useEffect(() => {
     if (!open || !profile) return;
 
-    const lengths = getProfileLengths(profile);
     reset(
       {
         seriesName: profile.seriesName || seriesOptions[0] || "",
         profileCode: profile.code || profile.seriesName,
+        dyeCode: getProfileDyeCode(profile),
         itemName: profile.name || profile.designName,
-        lengthsInMeter: lengths.length > 0 ? lengths : [profile.rmm].filter((value) => value > 0),
         powderCoatingRmm: profile.powderCoatingRmm ?? 0,
-        rate: profile.rate ?? profile.perKgRate ?? 0,
+        kgPerMeter: getProfileWeightPerMeter(profile),
       },
       { keepIsSubmitted: false }
     );
@@ -125,16 +109,10 @@ export function EditProfileDialog({
     const rebuilt = normalizeProfile(
       buildProfileFromForm(data, designImage, profile.id, profile.createdAt)
     );
-    const previousRate = profile.rate ?? profile.perKgRate ?? 0;
-    const priceHistory =
-      data.rate !== previousRate
-        ? appendPriceHistory(profile.priceHistory, previousRate, data.rate)
-        : profile.priceHistory ?? [];
 
     onSave(profile.id, {
       ...rebuilt,
       status: profile.status,
-      priceHistory,
       minStock: profile.minStock,
       currentStock: profile.currentStock,
     });
@@ -155,26 +133,28 @@ export function EditProfileDialog({
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
             <DialogDescription>
-              Update profile specifications, dimensions, and pricing.
+              Update profile specifications and dimensions.
             </DialogDescription>
           </DialogHeader>
         </div>
         {profile ? (
           <form key={profile.id} onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-5">
-              <FormSection title="Profile identity">
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <FormSection title="Profile details">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,168px)_minmax(0,1fr)] lg:items-start">
                   <ProfileImageUploadField
                     id="edit-design"
                     value={currentDesign || null}
                     onChange={(url) => setDesignPreview(url ?? "")}
-                    layout="card"
+                    layout="compact"
+                    className="mx-auto w-full max-w-[168px] lg:mx-0"
                   />
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <FormField
                       label={PROFILE_FIELD_LABELS.seriesName}
                       htmlFor="edit-seriesName"
                       required
+                      className="sm:col-span-2 xl:col-span-2"
                       error={resolveFieldError(isSubmitted, errors.seriesName)}
                     >
                       <SearchableSelect
@@ -206,10 +186,23 @@ export function EditProfileDialog({
                       />
                     </FormField>
                     <FormField
+                      label={PROFILE_FIELD_LABELS.dyeCode}
+                      htmlFor="edit-dyeCode"
+                      error={resolveFieldError(isSubmitted, errors.dyeCode)}
+                    >
+                      <Input
+                        id="edit-dyeCode"
+                        placeholder="e.g. 1001"
+                        className="font-mono"
+                        aria-invalid={fieldInvalid(isSubmitted, errors.dyeCode)}
+                        {...register("dyeCode")}
+                      />
+                    </FormField>
+                    <FormField
                       label={PROFILE_FIELD_LABELS.profileName}
                       htmlFor="edit-itemName"
                       required
-                      className="sm:col-span-2"
+                      className="sm:col-span-2 xl:col-span-4"
                       error={resolveFieldError(isSubmitted, errors.itemName)}
                     >
                       <Input
@@ -218,67 +211,41 @@ export function EditProfileDialog({
                         {...register("itemName")}
                       />
                     </FormField>
+                    <FormField
+                      label={PROFILE_FIELD_LABELS.powderCoatingRmm}
+                      htmlFor="edit-powderCoatingRmm"
+                      required
+                      className="sm:col-span-1 xl:col-span-2"
+                      error={resolveFieldError(isSubmitted, errors.powderCoatingRmm)}
+                    >
+                      <Input
+                        id="edit-powderCoatingRmm"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="tabular-nums"
+                        aria-invalid={fieldInvalid(isSubmitted, errors.powderCoatingRmm)}
+                        {...register("powderCoatingRmm")}
+                      />
+                    </FormField>
+                    <FormField
+                      label={PROFILE_FIELD_LABELS.kgPerMeter}
+                      htmlFor="edit-kgPerMeter"
+                      required
+                      className="sm:col-span-1 xl:col-span-2"
+                      error={resolveFieldError(isSubmitted, errors.kgPerMeter)}
+                    >
+                      <Input
+                        id="edit-kgPerMeter"
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        className="tabular-nums"
+                        aria-invalid={fieldInvalid(isSubmitted, errors.kgPerMeter)}
+                        {...register("kgPerMeter")}
+                      />
+                    </FormField>
                   </div>
-                </div>
-              </FormSection>
-
-              <FormSection title="Dimensions & pricing">
-                <ProfileLengthsEditor
-                  value={lengthsInMeter ?? [0]}
-                  onChange={(lengths) =>
-                    setValue("lengthsInMeter", lengths, { shouldValidate: isSubmitted })
-                  }
-                  error={lengthsError}
-                />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <FormField
-                    label={PROFILE_FIELD_LABELS.rate}
-                    htmlFor="edit-rate"
-                    required
-                    error={resolveFieldError(isSubmitted, errors.rate)}
-                  >
-                    <Input
-                      id="edit-rate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="tabular-nums"
-                      aria-invalid={fieldInvalid(isSubmitted, errors.rate)}
-                      {...register("rate")}
-                    />
-                  </FormField>
-                  <FormField
-                    label={PROFILE_FIELD_LABELS.powderCoatingRmm}
-                    htmlFor="edit-powderCoatingRmm"
-                    required
-                    error={resolveFieldError(isSubmitted, errors.powderCoatingRmm)}
-                  >
-                    <Input
-                      id="edit-powderCoatingRmm"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="tabular-nums"
-                      aria-invalid={fieldInvalid(isSubmitted, errors.powderCoatingRmm)}
-                      {...register("powderCoatingRmm")}
-                    />
-                  </FormField>
-                  <FormField
-                    label={PROFILE_FIELD_LABELS.ratePerMeter}
-                    htmlFor="edit-ratePerMeter"
-                    hint="Calculated from length and rate"
-                    className="sm:col-span-2 xl:col-span-1"
-                  >
-                    <Input
-                      id="edit-ratePerMeter"
-                      type="number"
-                      step="0.01"
-                      value={ratePerMeter || ""}
-                      disabled
-                      readOnly
-                      className="bg-muted tabular-nums"
-                    />
-                  </FormField>
                 </div>
               </FormSection>
             </div>

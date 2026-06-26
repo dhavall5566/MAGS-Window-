@@ -16,6 +16,7 @@ const sizeClasses = {
   md: "sm:max-w-lg",
   lg: "sm:max-w-2xl",
   xl: "sm:max-w-4xl",
+  "2xl": "sm:max-w-6xl",
 } as const;
 
 interface FormDialogProps {

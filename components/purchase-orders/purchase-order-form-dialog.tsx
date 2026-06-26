@@ -16,15 +16,18 @@ import { fieldInvalid, resolveFieldError } from "@/lib/form-utils";
 import {
   buildPurchaseOrder,
   buildPurchaseOrderItemFromProfile,
+  computePurchaseOrderItemQty,
   computePurchaseOrderItemWeight,
   defaultPurchaseOrderItem,
   generatePurchaseOrderNumber,
   getPurchaseOrderTotalWeight,
+  normalizePurchaseOrderLengthMm,
   purchaseOrderFormSchema,
   type PurchaseOrderFormData,
 } from "@/lib/purchase-order-form";
-import { findProfileByCode, getProfileSelectOptions } from "@/lib/profile";
-import { findVendorByPartyName, getVendorPartyNames } from "@/lib/vendor";
+import { findProfileByCode, getProfileDyeCode, getProfileSelectOptions } from "@/lib/profile";
+import { findProfileByDyeCode } from "@/lib/stock-inward-calculations";
+import { findVendorByPartyName, getVendorChallanDetails, getVendorPartyNames } from "@/lib/vendor";
 import { formatNumber, generateId } from "@/lib/utils";
 import type { Profile, PurchaseOrder, Vendor } from "@/types";
 
@@ -48,7 +51,9 @@ function buildDefaultValues(
     date: new Date().toISOString().split("T")[0],
     vendorName: "",
     vendorAddress: "",
-    vehicleNumber: "",
+    gstNo: "",
+    personName: "",
+    contactNo: "",
     remarks: "",
     items: [defaultPurchaseOrderItem()],
   };
@@ -106,22 +111,43 @@ export function PurchaseOrderFormDialog({
         date: orderToEdit.date,
         vendorName: orderToEdit.vendorName,
         vendorAddress: orderToEdit.vendorAddress ?? "",
-        vehicleNumber: orderToEdit.vehicleNumber ?? "",
+        gstNo: orderToEdit.gstNo ?? "",
+        personName: orderToEdit.personName ?? "",
+        contactNo: orderToEdit.contactNo ?? "",
         remarks: orderToEdit.remarks ?? "",
         items:
           orderToEdit.items?.length > 0
-            ? orderToEdit.items.map((item) => ({ ...item }))
+            ? orderToEdit.items.map((item) => {
+                const profile = findProfileByCode(profiles, item.profileCode);
+                return {
+                  ...item,
+                  dyeCode: item.dyeCode ?? (profile ? getProfileDyeCode(profile) : ""),
+                };
+              })
             : [defaultPurchaseOrderItem()],
       });
     } else {
       form.reset(buildDefaultValues("create", generatePurchaseOrderNumber(existingOrders)));
     }
-  }, [open, orderToEdit, existingOrders, form]);
+  }, [open, orderToEdit, existingOrders, form, profiles]);
 
   const onVendorSelect = (partyName: string) => {
-    const vendor = findVendorByPartyName(vendors, partyName);
     setValue("vendorName", partyName, { shouldValidate: isSubmitted });
-    setValue("vendorAddress", vendor?.partyAddress ?? "");
+
+    const vendor = findVendorByPartyName(vendors, partyName);
+    if (!vendor) {
+      setValue("vendorAddress", "");
+      setValue("gstNo", "");
+      setValue("personName", "");
+      setValue("contactNo", "");
+      return;
+    }
+
+    const details = getVendorChallanDetails(vendor);
+    setValue("vendorAddress", details.vendorAddress);
+    setValue("gstNo", details.vendorGstNo);
+    setValue("personName", details.vendorPersonName);
+    setValue("contactNo", details.vendorContact);
   };
 
   const recalcWeight = (index: number) => {
@@ -137,18 +163,73 @@ export function PurchaseOrderFormDialog({
     );
   };
 
+  const recalcQty = (index: number) => {
+    const item = form.getValues(`items.${index}`);
+    setValue(
+      `items.${index}.qty`,
+      computePurchaseOrderItemQty(
+        Number(item.kgPerMeter) || 0,
+        Number(item.length) || 0,
+        Number(item.totalWeightKg) || 0
+      ),
+      { shouldValidate: isSubmitted }
+    );
+  };
+
+  const syncLineItemDerivedValues = (index: number) => {
+    const item = form.getValues(`items.${index}`);
+    const qty = Number(item.qty) || 0;
+    const totalWeightKg = Number(item.totalWeightKg) || 0;
+
+    if (qty > 0) {
+      recalcWeight(index);
+    } else if (totalWeightKg > 0) {
+      recalcQty(index);
+    }
+  };
+
+  const applyProfileToLineItem = (index: number, profile: Profile) => {
+    const details = buildPurchaseOrderItemFromProfile(profile);
+    setValue(`items.${index}.dyeCode`, details.dyeCode ?? "", { shouldValidate: isSubmitted });
+    setValue(`items.${index}.profileCode`, details.profileCode, { shouldValidate: isSubmitted });
+    setValue(`items.${index}.profileName`, details.profileName);
+    setValue(`items.${index}.profileImage`, details.profileImage);
+    setValue(`items.${index}.kgPerMeter`, details.kgPerMeter);
+    syncLineItemDerivedValues(index);
+  };
+
+  const onDyeCodeChange = (index: number, dyeCode: string) => {
+    setValue(`items.${index}.dyeCode`, dyeCode, { shouldValidate: isSubmitted });
+
+    const trimmed = dyeCode.trim();
+    if (!trimmed) {
+      setValue(`items.${index}.profileCode`, "", { shouldValidate: isSubmitted });
+      setValue(`items.${index}.profileName`, "");
+      setValue(`items.${index}.profileImage`, "");
+      setValue(`items.${index}.kgPerMeter`, 0);
+      syncLineItemDerivedValues(index);
+      return;
+    }
+
+    const profile = findProfileByDyeCode(profiles, trimmed);
+    if (profile) {
+      applyProfileToLineItem(index, profile);
+    }
+  };
+
   const onProfileSelect = (index: number, code: string) => {
     const profile = findProfileByCode(profiles, code);
     if (!profile) {
       setValue(`items.${index}.profileCode`, code, { shouldValidate: isSubmitted });
       return;
     }
-    const details = buildPurchaseOrderItemFromProfile(profile);
-    setValue(`items.${index}.profileCode`, details.profileCode, { shouldValidate: isSubmitted });
-    setValue(`items.${index}.profileName`, details.profileName);
-    setValue(`items.${index}.profileImage`, details.profileImage);
-    setValue(`items.${index}.kgPerMeter`, details.kgPerMeter);
-    recalcWeight(index);
+    applyProfileToLineItem(index, profile);
+  };
+
+  const onLengthChange = (index: number, raw: string) => {
+    const normalized = normalizePurchaseOrderLengthMm(raw);
+    setValue(`items.${index}.length`, normalized, { shouldValidate: isSubmitted });
+    syncLineItemDerivedValues(index);
   };
 
   const onSubmit = (data: PurchaseOrderFormData) => {
@@ -163,7 +244,7 @@ export function PurchaseOrderFormDialog({
     <FormDialog
       open={open}
       onOpenChange={setOpen}
-      size="xl"
+      size="2xl"
       title={isEdit ? "Edit Purchase Order" : "New Purchase Order"}
       description="Issue a purchase order to a supplier with profile drawings, lengths, and weights."
       trigger={
@@ -227,7 +308,7 @@ export function PurchaseOrderFormDialog({
               <p className="text-sm text-destructive">{errors.vendorName.message}</p>
             )}
           </div>
-          <FormField label="Address" htmlFor="vendorAddress" optional className="sm:col-span-2">
+          <FormField label="Address" htmlFor="vendorAddress" className="sm:col-span-2">
             <Textarea
               id="vendorAddress"
               rows={2}
@@ -235,8 +316,18 @@ export function PurchaseOrderFormDialog({
               {...register("vendorAddress")}
             />
           </FormField>
-          <FormField label="V. Number" htmlFor="vehicleNumber" optional>
-            <Input id="vehicleNumber" placeholder="Vehicle number" {...register("vehicleNumber")} />
+          <FormField label="GST No." htmlFor="gstNo">
+            <Input id="gstNo" placeholder="e.g. 24AABCU9603R1ZM" {...register("gstNo")} />
+          </FormField>
+          <FormField label="Person Name" htmlFor="personName">
+            <Input id="personName" placeholder="Contact person" {...register("personName")} />
+          </FormField>
+          <FormField label="Contact No." htmlFor="contactNo">
+            <Input
+              id="contactNo"
+              placeholder="Phone / mobile"
+              {...register("contactNo")}
+            />
           </FormField>
         </div>
       </FormSection>
@@ -264,10 +355,20 @@ export function PurchaseOrderFormDialog({
             return (
               <div
                 key={field.id}
-                className="grid grid-cols-1 items-end gap-3 rounded-lg border p-3 sm:grid-cols-2 xl:grid-cols-12"
+                className="grid grid-cols-1 items-end gap-2 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-[5rem_minmax(11rem,1.6fr)_5.5rem_5.5rem_4.75rem_7.25rem]"
               >
-                <div className="space-y-1 sm:col-span-2 xl:col-span-4">
-                  <Label className="text-xs">Profile (Dia Code)</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">Dye Code</Label>
+                  <Input
+                    className="tabular-nums"
+                    placeholder="e.g. 1001"
+                    {...register(`items.${index}.dyeCode`, {
+                      onChange: (event) => onDyeCodeChange(index, event.target.value),
+                    })}
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+                  <Label className="text-xs">Profile</Label>
                   <SearchableSelect
                     value={itemCode || undefined}
                     onValueChange={(value) => onProfileSelect(index, value)}
@@ -279,62 +380,64 @@ export function PurchaseOrderFormDialog({
                     searchPlaceholder="Search profile…"
                   />
                 </div>
-                <div className="space-y-1 xl:col-span-2">
+                <div className="space-y-1">
                   <Label className="text-xs">KG/MTR</Label>
                   <Input
                     type="number"
                     step="any"
                     min="0"
-                    className="min-w-0"
+                    className="tabular-nums"
                     {...register(`items.${index}.kgPerMeter`, {
-                      onChange: () => recalcWeight(index),
+                      onChange: () => syncLineItemDerivedValues(index),
                     })}
                   />
                 </div>
-                <div className="space-y-1 xl:col-span-2">
+                <div className="space-y-1">
                   <Label className="text-xs">Length (MM)</Label>
                   <Input
                     type="number"
-                    step="any"
+                    step="0.1"
                     min="0"
-                    className="min-w-0"
+                    className="tabular-nums"
                     aria-invalid={fieldInvalid(
                       isSubmitted,
                       errors.items?.[index]?.length
                     )}
                     {...register(`items.${index}.length`, {
-                      onChange: () => recalcWeight(index),
+                      onChange: (event) => onLengthChange(index, event.target.value),
                     })}
                   />
                 </div>
-                <div className="space-y-1 xl:col-span-2">
+                <div className="space-y-1">
                   <Label className="text-xs">Qty</Label>
                   <Input
                     type="number"
                     step="any"
                     min="0"
-                    className="min-w-0"
+                    className="tabular-nums"
                     {...register(`items.${index}.qty`, {
                       onChange: () => recalcWeight(index),
                     })}
                   />
                 </div>
-                <div className="space-y-1 xl:col-span-2">
+                <div className="space-y-1">
                   <Label className="text-xs">Total Weight (KG)</Label>
                   <Input
                     type="number"
                     step="any"
                     min="0"
-                    className="min-w-0"
+                    className="tabular-nums"
                     aria-invalid={fieldInvalid(
                       isSubmitted,
                       errors.items?.[index]?.totalWeightKg
                     )}
-                    {...register(`items.${index}.totalWeightKg`)}
+                    {...register(`items.${index}.totalWeightKg`, {
+                      onChange: () => recalcQty(index),
+                    })}
                   />
                 </div>
                 {fields.length > 1 && (
-                  <div className="sm:col-span-2 xl:col-span-12">
+                  <div className="sm:col-span-2 lg:col-span-full">
                     <Button
                       type="button"
                       variant="ghost"

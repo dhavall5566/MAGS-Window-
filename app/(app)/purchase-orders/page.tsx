@@ -48,12 +48,18 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
   const columns = useMemo<Column<(typeof itemRows)[number]>[]>(
     () => [
       {
+        key: "dyeCode",
+        header: "Dye Code",
+        className: "font-mono text-xs",
+        render: (row) => row.dyeCode?.trim() || "—",
+      },
+      {
         key: "profileCode",
-        header: "Dia Code",
+        header: "Profile",
         className: "font-mono text-xs",
         render: (row) => row.profileCode || "—",
       },
-      { key: "profileName", header: "Profile", render: (row) => row.profileName || "—" },
+      { key: "profileName", header: "Profile Name", render: (row) => row.profileName || "—" },
       {
         key: "kgPerMeter",
         header: "KG/MTR",
@@ -64,7 +70,7 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
         key: "length",
         header: "Length (MM)",
         align: "center",
-        render: (row) => (row.length ? formatNumber(row.length) : "—"),
+        render: (row) => (row.length ? formatNumber(row.length, 1) : "—"),
       },
       {
         key: "qty",
@@ -99,9 +105,19 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
             <span className="text-muted-foreground">Address:</span> {order.vendorAddress}
           </div>
         )}
-        {order.vehicleNumber && (
+        {order.gstNo && (
           <div>
-            <span className="text-muted-foreground">V. Number:</span> {order.vehicleNumber}
+            <span className="text-muted-foreground">GST No.:</span> {order.gstNo}
+          </div>
+        )}
+        {order.personName && (
+          <div>
+            <span className="text-muted-foreground">Person Name:</span> {order.personName}
+          </div>
+        )}
+        {order.contactNo && (
+          <div>
+            <span className="text-muted-foreground">Contact No.:</span> {order.contactNo}
           </div>
         )}
         <div>
@@ -234,6 +250,9 @@ export default function PurchaseOrdersPage() {
     return (
       row.poNumber?.toLowerCase().includes(q) ||
       row.vendorName?.toLowerCase().includes(q) ||
+      row.gstNo?.toLowerCase().includes(q) ||
+      row.personName?.toLowerCase().includes(q) ||
+      row.contactNo?.toLowerCase().includes(q) ||
       codes.includes(q)
     );
   }, []);
@@ -256,13 +275,37 @@ export default function PurchaseOrdersPage() {
       {
         key: "vendorName",
         header: "Party",
-        className: "min-w-[180px] max-w-[280px] truncate font-medium",
+        className: "min-w-[160px] max-w-[220px] truncate font-medium",
         align: "left",
         render: (row) => (
           <span className="block truncate" title={row.vendorName}>
             {row.vendorName}
           </span>
         ),
+      },
+      {
+        key: "personName",
+        header: "Person Name",
+        className: "min-w-[120px] max-w-[180px] truncate",
+        align: "left",
+        hideBelow: "lg",
+        render: (row) => row.personName || "\u2014",
+      },
+      {
+        key: "contactNo",
+        header: "Contact No.",
+        className: "whitespace-nowrap tabular-nums",
+        align: "left",
+        hideBelow: "md",
+        render: (row) => row.contactNo || "\u2014",
+      },
+      {
+        key: "gstNo",
+        header: "GST No.",
+        className: "whitespace-nowrap font-mono text-xs",
+        align: "left",
+        hideBelow: "lg",
+        render: (row) => row.gstNo || "\u2014",
       },
       {
         key: "items",

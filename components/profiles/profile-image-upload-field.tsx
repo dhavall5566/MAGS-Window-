@@ -13,7 +13,7 @@ type ProfileImageUploadFieldProps = {
   label?: string;
   value: string | null;
   onChange: (url: string | null) => void;
-  layout?: "inline" | "card";
+  layout?: "inline" | "card" | "compact";
   className?: string;
 };
 
@@ -54,7 +54,8 @@ export function ProfileImageUploadField({
     }
   };
 
-  const isCard = layout === "card";
+  const isCard = layout === "card" || layout === "compact";
+  const isCompact = layout === "compact";
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -67,7 +68,7 @@ export function ProfileImageUploadField({
           htmlFor={id}
           className={cn(
             "form-field relative flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 transition-colors hover:bg-muted/40",
-            isCard ? "min-h-[180px] w-full" : "h-20 w-28"
+            isCard ? (isCompact ? "min-h-[132px] w-full" : "min-h-[180px] w-full") : "h-20 w-28"
           )}
         >
           {value ? (

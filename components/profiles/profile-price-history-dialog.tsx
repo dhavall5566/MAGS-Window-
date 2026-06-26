@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { formatPerKgRate, getProfileDisplayName } from "@/lib/profile";
-import { PROFILE_FIELD_LABELS } from "@/lib/profile-form";
 import { formatDate } from "@/lib/utils";
 import type { Profile, ProfilePriceHistory } from "@/types";
 
@@ -49,13 +48,13 @@ export function ProfilePriceHistoryDialog({
       },
       {
         key: "previousRate",
-        header: `Previous ${PROFILE_FIELD_LABELS.rate}`,
+        header: "Previous Rate",
         render: (row) =>
           row.previousRate == null ? "—" : formatPerKgRate(row.previousRate),
       },
       {
         key: "newRate",
-        header: `New ${PROFILE_FIELD_LABELS.rate}`,
+        header: "New Rate",
         className: "font-medium",
         render: (row) => formatPerKgRate(row.newRate),
       },
