@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
@@ -9,8 +9,11 @@ import { PowderCoatingRowActions } from "@/components/powder-coating/powder-coat
 import { formatDate, formatNumber } from "@/lib/utils";
 import { mergeProfiles } from "@/lib/profile";
 import { useAppStore } from "@/lib/store";
-import { fetchJson } from "@/lib/fetch-json";
-import type { PowderCoating, Profile } from "@/types";
+import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import type { PowderCoating } from "@/types";
+
+const selectStoreProfiles = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.profiles ?? [];
 
 const AddPowderCoatingDialog = dynamic(
   () =>
@@ -29,7 +32,11 @@ const EditPowderCoatingDialog = dynamic(
 );
 
 export default function PowderCoatingPage() {
-  const [apiProfiles, setApiProfiles] = useState<Profile[]>([]);
+  const [apiProfiles, setApiProfiles] = useCachedOrStoreList(
+    "/api/profiles",
+    "profiles",
+    selectStoreProfiles
+  );
   const [editingEntry, setEditingEntry] = useState<PowderCoating | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -44,12 +51,6 @@ export default function PowderCoatingPage() {
     () => mergeProfiles(apiProfiles, storeProfiles ?? []),
     [apiProfiles, storeProfiles]
   );
-
-  useEffect(() => {
-    fetchJson<{ profiles?: Profile[] }>("/api/profiles").then((d) =>
-      setApiProfiles(d?.profiles ?? [])
-    );
-  }, []);
 
   const profileCodes = useMemo(
     () =>

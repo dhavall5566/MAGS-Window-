@@ -1,0 +1,118 @@
+import { COMPANY, DELIVERY_CHALLAN } from "@/lib/company";
+import { formatPartyAddress } from "@/lib/vendor";
+import type { OutwardChallan, Vendor } from "@/types";
+
+export const MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc";
+
+export interface OutwardChallanPdfBranding {
+  companyName: string;
+  addressLine1: string;
+  addressLine2: string;
+  email: string;
+  phone: string;
+  gstNo: string;
+  signatoryLine: string;
+  logoUrl?: string;
+}
+
+export function isMagsOutwardChallanIssuer(
+  vendor: Pick<Vendor, "id" | "partyName">
+): boolean {
+  return (
+    vendor.id === MAGS_OUTWARD_CHALLAN_VENDOR_ID ||
+    vendor.partyName.trim().toUpperCase() === "MAGS"
+  );
+}
+
+export function getOutwardChallanIssuerVendors(vendors: Vendor[]): Vendor[] {
+  return vendors
+    .filter((vendor) => vendor.vendorType === "outward_challan")
+    .sort((a, b) => {
+      if (isMagsOutwardChallanIssuer(a)) return -1;
+      if (isMagsOutwardChallanIssuer(b)) return 1;
+      return a.partyName.localeCompare(b.partyName);
+    });
+}
+
+export function findOutwardChallanIssuerById(
+  vendors: Vendor[],
+  vendorId: string | undefined
+): Vendor | undefined {
+  if (!vendorId?.trim()) return undefined;
+  return getOutwardChallanIssuerVendors(vendors).find((vendor) => vendor.id === vendorId);
+}
+
+export function getDefaultOutwardChallanVendorId(vendors: Vendor[]): string {
+  const issuers = getOutwardChallanIssuerVendors(vendors);
+  return (
+    issuers.find(isMagsOutwardChallanIssuer)?.id ??
+    issuers[0]?.id ??
+    ""
+  );
+}
+
+function splitVendorAddressForPdf(vendor: Vendor): { line1: string; line2: string } {
+  if (vendor.challanAddressLine1?.trim()) {
+    return {
+      line1: vendor.challanAddressLine1.trim(),
+      line2: vendor.challanAddressLine2?.trim() ?? "",
+    };
+  }
+
+  const address = formatPartyAddress(vendor.partyAddress);
+  if (!address) return { line1: "", line2: "" };
+
+  const parts = address.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) return { line1: address, line2: "" };
+  if (parts.length === 2) return { line1: parts[0], line2: parts[1] };
+
+  const mid = Math.ceil(parts.length / 2);
+  return {
+    line1: parts.slice(0, mid).join(", "),
+    line2: parts.slice(mid).join(", "),
+  };
+}
+
+export function getOutwardChallanPdfBranding(
+  vendor: Vendor | undefined
+): OutwardChallanPdfBranding {
+  if (!vendor || isMagsOutwardChallanIssuer(vendor)) {
+    return {
+      companyName: DELIVERY_CHALLAN.name,
+      addressLine1: DELIVERY_CHALLAN.addressLine1,
+      addressLine2: DELIVERY_CHALLAN.addressLine2,
+      email: DELIVERY_CHALLAN.email,
+      phone: COMPANY.contact.phone,
+      gstNo: DELIVERY_CHALLAN.gstNo,
+      signatoryLine: DELIVERY_CHALLAN.signatoryLine,
+      logoUrl: COMPANY.logo,
+    };
+  }
+
+  const { line1, line2 } = splitVendorAddressForPdf(vendor);
+  const companyName = vendor.challanHeaderName?.trim() || vendor.partyName.trim();
+
+  return {
+    companyName,
+    addressLine1: line1,
+    addressLine2: line2,
+    email: vendor.challanEmail?.trim() || vendor.email?.trim() || "",
+    phone: vendor.challanPhone?.trim() || vendor.phoneNo?.trim() || "",
+    gstNo: vendor.gstNo?.trim() || "",
+    signatoryLine:
+      vendor.challanSignatoryLine?.trim() || `For, ${companyName}`,
+  };
+}
+
+export function resolveOutwardChallanPdfBranding(
+  challan: OutwardChallan,
+  vendors: Vendor[]
+): OutwardChallanPdfBranding {
+  const vendor =
+    findOutwardChallanIssuerById(vendors, challan.outwardChallanVendorId) ??
+    findOutwardChallanIssuerById(
+      vendors,
+      getDefaultOutwardChallanVendorId(vendors)
+    );
+  return getOutwardChallanPdfBranding(vendor);
+}

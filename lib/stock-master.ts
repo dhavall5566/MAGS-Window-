@@ -74,6 +74,8 @@ export function buildStockMasterRows(
   const buckets = new Map<string, StockMasterBucket>();
 
   for (const entry of inward) {
+    if (entry.status === "split") continue;
+
     const length = normalizeStockLength(entry.length ?? 0);
     if (!length) continue;
 
@@ -135,7 +137,6 @@ function ledgerTypeForConsumption(
   entry: Consumption
 ): StockLedgerEntry["type"] {
   if (entry.challanType === "powder_coating") return "coating_sent";
-  if (entry.challanType === "return") return "coating_return";
   return "consumption";
 }
 
@@ -144,7 +145,9 @@ export function buildStockLedgerRows(
   consumption: Consumption[] = []
 ): StockLedgerEntry[] {
   const movements: StockLedgerEntry[] = [
-    ...inward.map((entry) => {
+    ...inward
+      .filter((entry) => entry.status !== "split")
+      .map((entry) => {
       const totalWeightKg = Math.round((entry.totalWeightKg ?? entry.weight ?? 0) * 100) / 100;
       const length = entry.length ?? 0;
       const kgPerMeter = entry.kgPerMeter ?? STOCK_INWARD_KG_PER_METER;

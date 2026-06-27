@@ -198,20 +198,12 @@ export function buildReportPreviewContent(
             value: `${formatNumber(summary.totalConsumptionKg ?? 0)} kg`,
           },
           {
-            label: "Scrap Generated",
-            value: `${formatNumber(summary.totalScrapKg ?? 0)} kg`,
-          },
-          {
             label: "Coating Efficiency",
             value: `${summary.coatingEfficiency ?? 0}%`,
           },
           {
             label: "Stock Turnover",
             value: `${summary.stockTurnoverRatio ?? 0}x`,
-          },
-          {
-            label: "Scrap %",
-            value: `${summary.scrapPercentage ?? 0}%`,
           },
         ],
         tables: [

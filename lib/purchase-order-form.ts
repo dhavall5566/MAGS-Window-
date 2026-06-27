@@ -6,6 +6,8 @@ import {
   getProfileDisplayName,
   getProfileDyeCode,
   getProfileWeightPerMeter,
+  computeLineWeightKg,
+  lengthToMeters,
 } from "@/lib/profile";
 
 export const DEFAULT_PO_UOM = "MM";
@@ -43,25 +45,25 @@ export function normalizePurchaseOrderLengthMm(raw: string | number): number {
   return Math.floor(value * 10) / 10;
 }
 
-/** Total weight (kg) = KG/MTR × length × qty. */
+/** Total weight (kg) = KG/MTR × length × qty. Length is divided by 1000 only when UOM is MM. */
 export function computePurchaseOrderItemWeight(
   kgPerMeter: number,
   length: number,
-  qty: number
+  qty: number,
+  uom: string = DEFAULT_PO_UOM
 ): number {
-  const normalizedLength = normalizePurchaseOrderLengthMm(length);
-  const weight = (Number(kgPerMeter) || 0) * normalizedLength * (Number(qty) || 0);
-  return Math.round(weight * 100) / 100;
+  return computeLineWeightKg(kgPerMeter, length, qty, uom);
 }
 
-/** Qty = total weight (kg) ÷ (KG/MTR × length). */
+/** Qty = total weight (kg) ÷ (KG/MTR × length in m). */
 export function computePurchaseOrderItemQty(
   kgPerMeter: number,
   length: number,
-  totalWeightKg: number
+  totalWeightKg: number,
+  uom: string = DEFAULT_PO_UOM
 ): number {
-  const normalizedLength = normalizePurchaseOrderLengthMm(length);
-  const perUnitWeight = (Number(kgPerMeter) || 0) * normalizedLength;
+  const lengthMeters = lengthToMeters(length, uom);
+  const perUnitWeight = (Number(kgPerMeter) || 0) * lengthMeters;
   if (!perUnitWeight || !totalWeightKg) return 0;
   return Math.round((Number(totalWeightKg) / perUnitWeight) * 100) / 100;
 }

@@ -81,7 +81,6 @@ function buildSummaryChartData(summary: Record<string, number>) {
   return [
     { metric: "Inward", value: summary.totalInwardKg ?? 0 },
     { metric: "Consumption", value: summary.totalConsumptionKg ?? 0 },
-    { metric: "Scrap", value: summary.totalScrapKg ?? 0 },
     { metric: "Coating Sent", value: summary.totalCoatingSentKg ?? 0 },
     { metric: "Coating Returned", value: summary.totalCoatingReturnedKg ?? 0 },
   ];

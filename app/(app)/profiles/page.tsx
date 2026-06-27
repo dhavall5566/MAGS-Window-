@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Image from "next/image";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
@@ -12,6 +12,7 @@ import { ProfilePriceHistoryDialog } from "@/components/profiles/profile-price-h
 import { ProfileRowActions } from "@/components/profiles/profile-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { fetchJson } from "@/lib/fetch-json";
+import { useCachedApiList } from "@/hooks/use-cached-api-list";
 import {
   getProfileCodeValue,
   getProfileDesignImage,
@@ -45,8 +46,20 @@ export default function ProfilesPage() {
   const addProfile = useAppStore((s) => s.addProfile);
   const updateProfile = useAppStore((s) => s.updateProfile);
   const toggleProfileStatus = useAppStore((s) => s.toggleProfileStatus);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const storeProfiles = useAppStore((s) => s.profiles);
+  const { apiItems: apiProfiles, isLoading } = useCachedApiList<
+    Profile,
+    "profiles"
+  >("/api/profiles", "profiles", {
+    mapItem: normalizeProfile,
+    hasSeedData: () => (useAppStore.getState().profiles ?? []).length > 0,
+    getStoreFallback: () => useAppStore.getState().profiles ?? [],
+  });
+  const profiles = useMemo(
+    () => mergeProfileLists(apiProfiles, storeProfiles ?? []),
+    [apiProfiles, storeProfiles]
+  );
+  const showLoading = isLoading && profiles.length === 0;
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [historyProfile, setHistoryProfile] = useState<Profile | null>(null);
@@ -57,28 +70,8 @@ export default function ProfilesPage() {
   const { filterContent, filtersActive, clearFilters, matchesProfile } =
     useProfileFilters(profiles);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchJson<{ profiles?: Profile[] }>("/api/profiles")
-      .then((data) => {
-        if (cancelled) return;
-        const apiProfiles = data?.profiles ?? [];
-        const storeProfiles = useAppStore.getState().profiles ?? [];
-        setProfiles(mergeProfileLists(apiProfiles, storeProfiles));
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const handleAddProfile = (profile: Profile) => {
     addProfile(profile);
-    setProfiles((prev) => [...(prev ?? []), profile]);
   };
 
   const handleEdit = useCallback((row: Profile) => {
@@ -107,21 +100,11 @@ export default function ProfilesPage() {
 
   const handleUpdateProfile = (id: string, updates: Partial<Profile>) => {
     updateProfile(id, updates);
-    setProfiles((prev) =>
-      (prev ?? []).map((p) => (p.id === id ? { ...p, ...updates } : p))
-    );
   };
 
   const handleToggleStatus = useCallback(
     (id: string) => {
       toggleProfileStatus(id);
-      setProfiles((prev) =>
-        (prev ?? []).map((p) =>
-          p.id === id
-            ? { ...p, status: p.status === "active" ? "inactive" : "active" }
-            : p
-        )
-      );
     },
     [toggleProfileStatus]
   );
@@ -279,7 +262,7 @@ export default function ProfilesPage() {
         tableId="profiles"
         data={filteredProfiles}
         columns={columns}
-        isLoading={isLoading}
+        isLoading={showLoading}
         loadingMessage="Loading profiles\u2026"
         searchFilter={handleProfileSearch}
         searchPlaceholder="Search by profile name, code, or dye code..."

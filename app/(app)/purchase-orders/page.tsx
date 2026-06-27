@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
@@ -12,16 +12,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { formatDate, formatNumber } from "@/lib/utils";
-import { fetchJson } from "@/lib/fetch-json";
+import { getCachedJson } from "@/lib/fetch-json";
+import { useCachedApiList } from "@/hooks/use-cached-api-list";
 import { mergeProfiles } from "@/lib/profile";
 import { getPurchaseOrderTotalWeight } from "@/lib/purchase-order-form";
+import { showDeletedToast } from "@/lib/toast";
 import {
   createPurchaseOrderApi,
   deletePurchaseOrderApi,
-  fetchPurchaseOrders,
+  mergePurchaseOrders,
   updatePurchaseOrderApi,
 } from "@/lib/purchase-order-api";
 import { useAppStore } from "@/lib/store";
@@ -145,65 +146,62 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
 
 export default function PurchaseOrdersPage() {
   const storeProfiles = useAppStore((s) => s.profiles);
+  const storeOrders = useAppStore((s) => s.purchaseOrders);
   const vendors = useAppStore((s) => s.vendors);
   const addPurchaseOrder = useAppStore((s) => s.addPurchaseOrder);
   const replacePurchaseOrder = useAppStore((s) => s.replacePurchaseOrder);
   const deletePurchaseOrder = useAppStore((s) => s.deletePurchaseOrder);
 
-  const [apiProfiles, setApiProfiles] = useState<Profile[]>([]);
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { apiItems: apiProfiles } = useCachedApiList<Profile, "profiles">(
+    "/api/profiles",
+    "profiles",
+    {
+      hasSeedData: () => (useAppStore.getState().profiles ?? []).length > 0,
+      getStoreFallback: () => useAppStore.getState().profiles ?? [],
+    }
+  );
+  const { apiItems: apiOrders, isLoading } = useCachedApiList<
+    PurchaseOrder,
+    "purchaseOrders"
+  >("/api/purchase-orders", "purchaseOrders", {
+    hasSeedData: () => (useAppStore.getState().purchaseOrders ?? []).length > 0,
+    getStoreFallback: () => useAppStore.getState().purchaseOrders ?? [],
+  });
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null);
 
   const profiles = useMemo(
     () => mergeProfiles(apiProfiles, storeProfiles ?? []),
     [apiProfiles, storeProfiles]
   );
 
-  const loadOrders = useCallback(async () => {
-    const merged = await fetchPurchaseOrders(useAppStore.getState().purchaseOrders ?? []);
-    setOrders(merged);
-    return merged;
-  }, []);
+  const orders = useMemo(
+    () => mergePurchaseOrders(apiOrders, storeOrders ?? []),
+    [apiOrders, storeOrders]
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    const storeOrders = useAppStore.getState().purchaseOrders ?? [];
-
-    Promise.all([
-      fetchJson<{ profiles?: Profile[] }>("/api/profiles"),
-      fetchPurchaseOrders(storeOrders),
-    ])
-      .then(([profilesData, purchaseOrdersData]) => {
-        if (cancelled) return;
-        setApiProfiles(profilesData?.profiles ?? []);
-        setOrders(purchaseOrdersData);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const showLoading = isLoading && orders.length === 0;
 
   const handleCreate = useCallback(
     async (order: PurchaseOrder) => {
+      addPurchaseOrder(order);
+
       const saved = await createPurchaseOrderApi(order);
       if (!saved) {
+        deletePurchaseOrder(order.id);
         alert("Could not save purchase order. Please check that the backend is running.");
         return;
       }
-      addPurchaseOrder(saved);
-      await loadOrders();
+      replacePurchaseOrder(saved);
     },
-    [addPurchaseOrder, loadOrders]
+    [addPurchaseOrder, replacePurchaseOrder, deletePurchaseOrder]
   );
 
   const handleUpdate = useCallback(
     async (order: PurchaseOrder) => {
+      replacePurchaseOrder(order);
+
       const saved = await updatePurchaseOrderApi(order);
       if (!saved) {
         alert("Could not update purchase order. Please check that the backend is running.");
@@ -212,23 +210,22 @@ export default function PurchaseOrdersPage() {
       replacePurchaseOrder(saved);
       setEditOpen(false);
       setEditingOrder(null);
-      await loadOrders();
     },
-    [replacePurchaseOrder, loadOrders]
+    [replacePurchaseOrder]
   );
 
   const handleDelete = useCallback(
     async (order: PurchaseOrder) => {
       if (!confirm(`Delete purchase order ${order.poNumber}?`)) return;
+      showDeletedToast("Purchase order");
+      deletePurchaseOrder(order.id);
+
       const ok = await deletePurchaseOrderApi(order.id);
       if (!ok) {
         alert("Could not delete purchase order. Please check that the backend is running.");
-        return;
       }
-      deletePurchaseOrder(order.id);
-      await loadOrders();
     },
-    [deletePurchaseOrder, loadOrders]
+    [deletePurchaseOrder]
   );
 
   const handleDownload = useCallback(
@@ -243,6 +240,15 @@ export default function PurchaseOrdersPage() {
     },
     [profiles]
   );
+
+  const handleView = useCallback((order: PurchaseOrder) => {
+    setViewOrder(order);
+  }, []);
+
+  const handleEdit = useCallback((order: PurchaseOrder) => {
+    setEditingOrder(order);
+    setEditOpen(true);
+  }, []);
 
   const handleSearch = useCallback((row: PurchaseOrder, query: string) => {
     const q = query.toLowerCase();
@@ -330,35 +336,23 @@ export default function PurchaseOrdersPage() {
         sticky: true,
         render: (row) => (
           <TableRowActions>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  aria-label="View purchase order"
-                >
-                  <Eye className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>{row.poNumber}</DialogTitle>
-                </DialogHeader>
-                <PurchaseOrderDetail order={row} />
-              </DialogContent>
-            </Dialog>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="View purchase order"
+              onClick={() => handleView(row)}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8"
               aria-label="Edit purchase order"
-              onClick={() => {
-                setEditingOrder(row);
-                setEditOpen(true);
-              }}
+              onClick={() => handleEdit(row)}
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -368,7 +362,7 @@ export default function PurchaseOrdersPage() {
               size="icon"
               className="h-8 w-8 text-destructive hover:text-destructive"
               aria-label="Delete purchase order"
-              onClick={() => handleDelete(row)}
+              onClick={() => void handleDelete(row)}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -378,7 +372,7 @@ export default function PurchaseOrdersPage() {
               size="icon"
               className="h-8 w-8"
               aria-label="Download PDF"
-              onClick={() => handleDownload(row)}
+              onClick={() => void handleDownload(row)}
             >
               <FileDown className="h-4 w-4" />
             </Button>
@@ -386,7 +380,7 @@ export default function PurchaseOrdersPage() {
         ),
       },
     ],
-    [handleDelete, handleDownload]
+    [handleDelete, handleDownload, handleEdit, handleView]
   );
 
   return (
@@ -419,11 +413,29 @@ export default function PurchaseOrdersPage() {
         />
       )}
 
+      <Dialog
+        open={viewOrder !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewOrder(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          {viewOrder ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{viewOrder.poNumber}</DialogTitle>
+              </DialogHeader>
+              <PurchaseOrderDetail order={viewOrder} />
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <DataTable
         tableId="purchase-orders"
         data={orders}
         columns={columns}
-        isLoading={isLoading}
+        isLoading={showLoading}
         loadingMessage="Loading purchase orders…"
         searchFilter={handleSearch}
         searchPlaceholder="Search PO number, party, or profile code..."

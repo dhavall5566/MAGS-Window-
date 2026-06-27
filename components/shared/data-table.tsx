@@ -46,6 +46,7 @@ import {
   savePageSize,
 } from "@/lib/table-column-visibility";
 import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 type ColumnAlign = "left" | "center" | "right";
 export type TableDensity = "default" | "compact" | "comfortable";
@@ -190,6 +191,7 @@ export function DataTable<T extends object>({
   serialHeader = "Sr. No.",
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 250);
   const [sort, setSort] = useState<{ key: string; direction: SortDirection } | null>(
     null
   );
@@ -250,16 +252,22 @@ export function DataTable<T extends object>({
 
   useEffect(() => {
     setPage(1);
-  }, [search, filtersActive, sort?.key, sort?.direction, data, pageSize]);
+  }, [debouncedSearch, filtersActive, sort?.key, sort?.direction, data, pageSize]);
 
   useEffect(() => {
     if (!columnsReady || hideableKeys.length === 0) return;
-    saveHiddenColumnKeys(tableId, hiddenKeys);
+    const timer = window.setTimeout(() => {
+      saveHiddenColumnKeys(tableId, hiddenKeys);
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [tableId, hiddenKeys, hideableKeys.length, columnsReady]);
 
   useEffect(() => {
     if (!columnsReady || defaultColumnOrder.length === 0) return;
-    saveColumnOrder(tableId, columnOrder);
+    const timer = window.setTimeout(() => {
+      saveColumnOrder(tableId, columnOrder);
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [tableId, columnOrder, defaultColumnOrder.length, columnsReady]);
 
   const orderedColumns = useMemo(() => {
@@ -332,18 +340,18 @@ export function DataTable<T extends object>({
 
   const filtered = useMemo(() => {
     const rows = data ?? [];
-    if (!search) return rows;
+    if (!debouncedSearch) return rows;
     if (searchFilter) {
-      return rows.filter((row) => searchFilter(row, search));
+      return rows.filter((row) => searchFilter(row, debouncedSearch));
     }
     if (!searchKey) return rows;
-    const q = search.toLowerCase();
+    const q = debouncedSearch.toLowerCase();
     return rows.filter((row) =>
       String((row as Record<string, unknown>)[searchKey as string] ?? "")
         .toLowerCase()
         .includes(q)
     );
-  }, [data, search, searchKey, searchFilter]);
+  }, [data, debouncedSearch, searchKey, searchFilter]);
 
   const sorted = useMemo(() => {
     if (!sort) return filtered;

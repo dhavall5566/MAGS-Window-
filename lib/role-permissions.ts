@@ -13,13 +13,12 @@ export const PERMISSION_AREAS = [
   { key: "stock", label: "Stock", description: "Stock inward and stock master" },
   { key: "consumption", label: "Consumption", description: "Material consumption" },
   { key: "coating", label: "Powder Coating", description: "Coating batches" },
-  { key: "challans", label: "Challans", description: "Outward, coating, and return challans" },
+  { key: "challans", label: "Challans", description: "Outward and powder coating challans" },
   { key: "ledger", label: "Stock Ledger", description: "Stock movement ledger" },
   { key: "reports", label: "Reports", description: "Reports and analytics" },
   { key: "users", label: "Users", description: "User management" },
   { key: "vendors", label: "Vendors", description: "Vendor master" },
   { key: "settings", label: "Settings", description: "App configuration" },
-  { key: "scrap", label: "Scrap", description: "Scrap management" },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_AREAS)[number]["key"];
@@ -36,7 +35,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, UserRole[]> = {
   users: ["administrator"],
   vendors: ["administrator", "store_manager", "production_user"],
   settings: ["administrator", "store_manager", "production_user"],
-  scrap: ["administrator", "store_manager"],
   ledger: ["administrator", "store_manager"],
 };
 

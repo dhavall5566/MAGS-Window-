@@ -1,12 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, FileDown, Trash2, BarChart3, Package, Factory, Recycle, SprayCan } from "lucide-react";
+import { Eye, FileDown, Trash2, BarChart3, Package, Factory, SprayCan } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { DataTable } from "@/components/shared/data-table";
 import { CreateReportDialog } from "@/components/reports/create-report-dialog";
-import { ReportChartPanel } from "@/components/reports/report-chart-panel";
 import { ReportPreviewDialog } from "@/components/reports/report-preview-dialog";
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,17 @@ import type { ReportApiData } from "@/lib/report-content";
 import { getReportTypeLabel } from "@/lib/report-form";
 import { useAppStore } from "@/lib/store";
 import type { Report } from "@/types";
+
+const ReportChartPanel = dynamic(
+  () =>
+    import("@/components/reports/report-chart-panel").then((mod) => mod.ReportChartPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[360px] rounded-xl border bg-card animate-pulse" />
+    ),
+  }
+);
 
 export default function ReportsPage() {
   const [data, setData] = useState<Record<string, unknown>>({});
@@ -216,7 +227,7 @@ export default function ReportsPage() {
         <CreateReportDialog existingReports={reports ?? []} onSave={addReport} />
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
         <StatCard
           title="Total Inward"
           value={`${formatNumber(summary.totalInwardKg ?? 0)} kg`}
@@ -226,12 +237,6 @@ export default function ReportsPage() {
           title="Total Consumption"
           value={`${formatNumber(summary.totalConsumptionKg ?? 0)} kg`}
           icon={Factory}
-        />
-        <StatCard
-          title="Scrap Generated"
-          value={`${formatNumber(summary.totalScrapKg ?? 0)} kg`}
-          icon={Recycle}
-          variant="danger"
         />
         <StatCard
           title="Coating Efficiency"

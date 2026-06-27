@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
@@ -14,31 +14,53 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate, formatNumber } from "@/lib/utils";
-import { fetchJson } from "@/lib/fetch-json";
+import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
 import {
-  calculateChallanItemAmount,
+  createChallanApi,
+  deleteChallanApi,
+  updateChallanApi,
+} from "@/lib/challan-api";
+import {
+  calculatePowderCoatingItemAmount,
   findProfileByCode,
   formatCurrency,
-  getChallanItemRatePerMeter,
+  getPowderCoatingItemRate,
   getItemProfileCodes,
+  POWDER_COATING_RMTR_RATE_LABEL,
   getUniqueCodesForSeriesFromProfileCodes,
   getUniqueSeriesFromProfileCodes,
   matchesItemsProfileCodeFilters,
   mergeProfiles,
 } from "@/lib/profile";
+import { mergeChallans } from "@/lib/challan-consumption";
+import { getOutwardChallanProjectName, sumChallanItemQuantities, sumChallanItemWeights } from "@/lib/challan-outward";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
-import type { Challan, ChallanItem, Profile } from "@/types";
+import type { Challan, ChallanItem, PowderCoatingChallan, Profile } from "@/types";
+
+const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.challans ?? [];
+const selectStoreProfiles = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.profiles ?? [];
 
 const ChallanFormDialog = dynamic(
   () =>
     import("@/components/challans/challan-form-dialog").then((mod) => mod.ChallanFormDialog),
   { ssr: false }
 );
+
+const CHALLAN_TYPE_LABEL: Record<string, string> = {
+  outward: "Outward",
+  powder_coating: "Powder Coating",
+};
+
+const CHALLAN_TYPE_BADGE_CLASS: Record<string, string> = {
+  outward: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  powder_coating: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+};
 
 function ChallanDetail({
   challan,
@@ -48,6 +70,14 @@ function ChallanDetail({
   profiles: Profile[];
 }) {
   const isOutward = challan.type === "outward";
+  const totalNoOfProfiles = isOutward ? sumChallanItemQuantities(challan.items) : 0;
+  const totalWeightAllProfiles = isOutward
+    ? sumChallanItemWeights(challan.items, profiles)
+    : 0;
+  const coatingRate =
+    challan.type === "powder_coating"
+      ? (challan as PowderCoatingChallan).coatingRate
+      : undefined;
 
   const itemRows = useMemo(
     () =>
@@ -82,12 +112,12 @@ function ChallanDetail({
     if (!isOutward) {
       columns.push({
         key: "rate",
-        header: "Rate",
+        header: POWDER_COATING_RMTR_RATE_LABEL,
         align: "center",
         sortable: false,
         render: (row) =>
           formatNumber(
-            getChallanItemRatePerMeter(row, findProfileByCode(profiles, row.profileCode)),
+            getPowderCoatingItemRate(row, findProfileByCode(profiles, row.profileCode), coatingRate),
             3
           ),
       });
@@ -102,9 +132,9 @@ function ChallanDetail({
       },
       {
         key: "weight",
-        header: "Weight",
+        header: isOutward ? "Total Weight" : "Weight",
         align: "center",
-        render: (row) => `${row.weight} kg`,
+        render: (row) => `${formatNumber(row.weight, 2)} kg`,
       }
     );
 
@@ -116,13 +146,17 @@ function ChallanDetail({
         sortable: false,
         render: (row) =>
           formatCurrency(
-            calculateChallanItemAmount(row, findProfileByCode(profiles, row.profileCode))
+            calculatePowderCoatingItemAmount(
+              row,
+              findProfileByCode(profiles, row.profileCode),
+              coatingRate
+            )
           ),
       });
     }
 
     return columns;
-  }, [isOutward, profiles]);
+  }, [isOutward, profiles, coatingRate]);
 
   return (
     <div className="space-y-3 text-sm">
@@ -130,6 +164,12 @@ function ChallanDetail({
         <div>
           <span className="text-muted-foreground">Vendor:</span> {challan.vendorName}
         </div>
+        {isOutward && challan.outwardChallanVendorName && (
+          <div>
+            <span className="text-muted-foreground">Outward Challan Vendor:</span>{" "}
+            {challan.outwardChallanVendorName}
+          </div>
+        )}
         <div>
           <span className="text-muted-foreground">Contact:</span>{" "}
           {challan.vendorContact?.trim() || "—"}
@@ -137,6 +177,10 @@ function ChallanDetail({
         <div className="col-span-2">
           <span className="text-muted-foreground">Address:</span>{" "}
           {challan.vendorAddress?.trim() || "—"}
+        </div>
+        <div className="col-span-2">
+          <span className="text-muted-foreground">GST No.:</span>{" "}
+          {challan.vendorGstNo?.trim() || "—"}
         </div>
         <div>
           <span className="text-muted-foreground">Person:</span>{" "}
@@ -148,6 +192,29 @@ function ChallanDetail({
         <div>
           <span className="text-muted-foreground">Driver:</span> {challan.driverName}
         </div>
+        {challan.type === "outward" && challan.totalBundles != null && (
+          <div>
+            <span className="text-muted-foreground">Total Bundles:</span> {challan.totalBundles}
+          </div>
+        )}
+        {challan.type === "outward" && challan.totalWeightManual != null && (
+          <div>
+            <span className="text-muted-foreground">Total Weight Manual:</span>{" "}
+            {formatNumber(challan.totalWeightManual, 2)} kg
+          </div>
+        )}
+        {isOutward && totalWeightAllProfiles > 0 && (
+          <div>
+            <span className="text-muted-foreground">Total Weight of All Profiles:</span>{" "}
+            {formatNumber(totalWeightAllProfiles, 2)} kg
+          </div>
+        )}
+        {isOutward && totalNoOfProfiles > 0 && (
+          <div>
+            <span className="text-muted-foreground">Total No. Of Profiles:</span>{" "}
+            {totalNoOfProfiles}
+          </div>
+        )}
         <div>
           <span className="text-muted-foreground">Date:</span> {formatDate(challan.date)}
         </div>
@@ -162,6 +229,12 @@ function ChallanDetail({
             <div>
               <span className="text-muted-foreground">Color:</span> {challan.color}
             </div>
+            {challan.coatingRate != null && challan.coatingRate > 0 && (
+              <div>
+                <span className="text-muted-foreground">Rate:</span>{" "}
+                {formatNumber(challan.coatingRate, 4)}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -174,78 +247,93 @@ function ChallanDetail({
         pagination={itemRows.length > 10}
         defaultPageSize={10}
       />
-      {challan.remarks && (
+      {challan.type === "outward" && getOutwardChallanProjectName(challan) && (
         <p className="text-muted-foreground">
-          <span className="font-medium">Remarks:</span> {challan.remarks}
+          <span className="font-medium">Project Name:</span>{" "}
+          {getOutwardChallanProjectName(challan)}
+        </p>
+      )}
+      {challan.type === "powder_coating" && getOutwardChallanProjectName(challan) && (
+        <p className="text-muted-foreground">
+          <span className="font-medium">Project Name:</span>{" "}
+          {getOutwardChallanProjectName(challan)}
         </p>
       )}
     </div>
   );
 }
 
-function mergeChallans(api: Challan[], store: Challan[]): Challan[] {
-  const merged = [...api];
-  store.forEach((entry) => {
-    const existing = merged.find((m) => m?.id === entry?.id);
-    if (existing) {
-      Object.assign(existing, entry);
-    } else {
-      merged.push(entry);
-    }
-  });
-  return merged;
-}
-
 export default function ChallansPage() {
   const storeChallans = useAppStore((s) => s.challans);
   const storeProfiles = useAppStore((s) => s.profiles);
   const vendors = useAppStore((s) => s.vendors);
-  const addChallan = useAppStore((s) => s.addChallan);
   const replaceChallan = useAppStore((s) => s.replaceChallan);
   const deleteChallan = useAppStore((s) => s.deleteChallan);
-  const [challans, setChallans] = useState<Challan[]>([]);
-  const [apiProfiles, setApiProfiles] = useState<Profile[]>([]);
+  const [apiChallans, setApiChallans] = useCachedOrStoreList(
+    "/api/challans",
+    "challans",
+    selectStoreChallans
+  );
+  const [apiProfiles, setApiProfiles] = useCachedOrStoreList(
+    "/api/profiles",
+    "profiles",
+    selectStoreProfiles
+  );
   const [activeTab, setActiveTab] = useState("all");
   const [seriesFilter, setSeriesFilter] = useState("");
   const [codeFilter, setCodeFilter] = useState("");
   const [editingChallan, setEditingChallan] = useState<Challan | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [viewChallan, setViewChallan] = useState<Challan | null>(null);
+  const [, startTabTransition] = useTransition();
 
   const profiles = mergeProfiles(apiProfiles, storeProfiles ?? []);
 
-  useEffect(() => {
-    fetchJson<{ profiles?: Profile[] }>("/api/profiles").then((d) =>
-      setApiProfiles(d?.profiles ?? [])
-    );
-  }, []);
+  const challans = useMemo(
+    () => mergeChallans(apiChallans, storeChallans ?? []),
+    [apiChallans, storeChallans]
+  );
 
-  useEffect(() => {
-    fetchJson<{ challans?: Challan[] }>("/api/challans").then((d) => {
-      setChallans(mergeChallans(d?.challans ?? [], storeChallans ?? []));
+  const handleCreate = async (challan: Challan) => {
+    const saved = await createChallanApi(challan);
+    const record = saved ?? challan;
+    replaceChallan(record);
+    setApiChallans((rows) => {
+      const exists = rows.some((row) => row.id === record.id);
+      return exists
+        ? rows.map((row) => (row.id === record.id ? record : row))
+        : [...rows, record];
     });
-  }, [storeChallans]);
-
-  const handleCreate = (challan: Challan) => {
-    addChallan(challan);
-    setChallans((prev) => [...(prev ?? []), challan]);
   };
 
-  const handleUpdate = (challan: Challan) => {
+  const handleUpdate = async (challan: Challan) => {
     replaceChallan(challan);
-    setChallans((prev) =>
-      (prev ?? []).map((c) => (c.id === challan.id ? challan : c))
-    );
     setEditOpen(false);
     setEditingChallan(null);
+    const saved = await updateChallanApi(challan);
+    if (saved) {
+      replaceChallan(saved);
+      setApiChallans((rows) => rows.map((row) => (row.id === saved.id ? saved : row)));
+    }
   };
 
-  const handleDelete = (challan: Challan) => {
+  const handleDelete = useCallback(async (challan: Challan) => {
     if (!confirm(`Delete challan ${challan.challanNumber}? Consumption will be updated.`)) {
       return;
     }
     deleteChallan(challan.id);
-    setChallans((prev) => (prev ?? []).filter((c) => c.id !== challan.id));
-  };
+    setApiChallans((rows) => rows.filter((row) => row.id !== challan.id));
+    await deleteChallanApi(challan.id);
+  }, [deleteChallan, setApiChallans]);
+
+  const handleEdit = useCallback((challan: Challan) => {
+    setEditingChallan(challan);
+    setEditOpen(true);
+  }, []);
+
+  const handleView = useCallback((challan: Challan) => {
+    setViewChallan(challan);
+  }, []);
 
   const tabFiltered = useMemo(
     () =>
@@ -310,21 +398,6 @@ export default function ChallansPage() {
     setCodeFilter("");
   }, []);
 
-  const typeLabel: Record<string, string> = {
-    outward: "Outward",
-    powder_coating: "Powder Coating",
-    return: "Return",
-  };
-
-  const typeBadgeClass: Record<string, string> = {
-    outward:
-      "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-    powder_coating:
-      "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
-    return:
-      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  };
-
   const formatProfileCodes = (items: Challan["items"]) => {
     const codes = getItemProfileCodes(items);
     if (codes.length === 0) return { label: "—", title: "" };
@@ -337,7 +410,8 @@ export default function ChallansPage() {
     };
   };
 
-  const columns = [
+  const columns = useMemo(
+    () => [
     {
       key: "challanNumber",
       header: "Challan No",
@@ -354,10 +428,10 @@ export default function ChallansPage() {
           variant="outline"
           className={cn(
             "whitespace-nowrap border px-2.5 py-0.5 text-xs font-medium",
-            typeBadgeClass[row.type]
-          )}
-        >
-          {typeLabel[row.type] ?? row.type}
+              CHALLAN_TYPE_BADGE_CLASS[row.type]
+            )}
+          >
+            {CHALLAN_TYPE_LABEL[row.type] ?? row.type}
         </Badge>
       ),
     },
@@ -410,82 +484,72 @@ export default function ChallansPage() {
       className: "whitespace-nowrap",
       align: "right" as const,
       sticky: true,
-      render: (row: Challan) => (
-        <TableRowActions>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                aria-label="View challan"
-              >
-                <Eye className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>{row.challanNumber}</DialogTitle>
-              </DialogHeader>
-              <ChallanDetail challan={row} profiles={profiles} />
-            </DialogContent>
-          </Dialog>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Edit challan"
-            onClick={() => {
-              setEditingChallan(row);
-              setEditOpen(true);
-            }}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            aria-label="Delete challan"
-            onClick={() => handleDelete(row)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Download PDF"
-            onClick={async () => {
-              try {
-                const { generateChallanPDF } = await import("@/lib/challan-pdf");
-                await generateChallanPDF(
-                  enrichChallanVendorDetails(row, vendors ?? []),
-                  profiles,
-                  vendors ?? []
-                );
-              } catch (error) {
-                console.error("PDF download failed:", error);
-                alert("Could not generate the PDF. Please refresh the page and try again.");
-              }
-            }}
-          >
-            <FileDown className="h-4 w-4" />
-          </Button>
-        </TableRowActions>
-      ),
-    },
-  ];
+        render: (row: Challan) => (
+          <TableRowActions>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="View challan"
+              onClick={() => handleView(row)}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Edit challan"
+              onClick={() => handleEdit(row)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              aria-label="Delete challan"
+              onClick={() => void handleDelete(row)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Download PDF"
+              onClick={async () => {
+                try {
+                  const { generateChallanPDF } = await import("@/lib/challan-pdf");
+                  await generateChallanPDF(
+                    enrichChallanVendorDetails(row, vendors ?? []),
+                    profiles,
+                    vendors ?? []
+                  );
+                } catch (error) {
+                  console.error("PDF download failed:", error);
+                  alert("Could not generate the PDF. Please refresh the page and try again.");
+                }
+              }}
+            >
+              <FileDown className="h-4 w-4" />
+            </Button>
+          </TableRowActions>
+        ),
+      },
+    ],
+    [handleDelete, handleEdit, handleView, profiles, vendors]
+  );
 
   return (
     <div>
       <PageHeader
         title="Challan Management"
-        description="Outward delivery, powder coating, and return challans — consumption syncs automatically"
+        description="Outward delivery and powder coating challans — consumption syncs automatically"
       >
         <ChallanFormDialog
           type="outward"
@@ -499,15 +563,10 @@ export default function ChallansPage() {
           vendors={vendors ?? []}
           onSave={handleCreate}
         />
-        <ChallanFormDialog
-          type="return"
-          profiles={profiles}
-          vendors={vendors ?? []}
-          onSave={handleCreate}
-        />
       </PageHeader>
 
-      {editingChallan && (
+      {editingChallan &&
+        (editingChallan.type === "outward" || editingChallan.type === "powder_coating") && (
         <ChallanFormDialog
           type={editingChallan.type}
           profiles={profiles}
@@ -526,14 +585,16 @@ export default function ChallansPage() {
       <Tabs
         value={activeTab}
         onValueChange={(value) => {
-          setActiveTab(value);
-          setSeriesFilter("");
-          setCodeFilter("");
+          startTabTransition(() => {
+            setActiveTab(value);
+            setSeriesFilter("");
+            setCodeFilter("");
+          });
         }}
         className="mb-3"
       >
         <div className="-mx-1 overflow-x-auto pb-1">
-          <TabsList className="h-9 w-max min-w-full sm:min-w-0">
+          <TabsList activeValue={activeTab} className="h-9 w-max min-w-full sm:min-w-0">
             <TabsTrigger value="all" className="text-xs sm:text-sm">
               All Challans
             </TabsTrigger>
@@ -543,12 +604,9 @@ export default function ChallansPage() {
             <TabsTrigger value="powder_coating" className="text-xs sm:text-sm">
               Powder Coating
             </TabsTrigger>
-            <TabsTrigger value="return" className="text-xs sm:text-sm">
-              Return
-            </TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value={activeTab} className="mt-3">
+        <div className="mt-3">
           <DataTable
             tableId="challans"
             data={filtered}
@@ -559,15 +617,33 @@ export default function ChallansPage() {
             filtersActive={Boolean(seriesFilter || codeFilter)}
             onClearFilters={handleClearFilters}
           />
-        </TabsContent>
+        </div>
       </Tabs>
+
+      <Dialog
+        open={viewChallan !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewChallan(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          {viewChallan ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{viewChallan.challanNumber}</DialogTitle>
+              </DialogHeader>
+              <ChallanDetail challan={viewChallan} profiles={profiles} />
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <div className="mt-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">Consumption Sync</p>
         <p className="mt-1 text-xs leading-relaxed">
           Creating, editing, or deleting a challan updates <strong>Consumption</strong> and{" "}
-          <strong>Stock Master</strong>. Outward and powder coating subtract weight; returns add it
-          back.
+          <strong>Stock Master</strong>. Outward challans drive consumption; powder coating
+          challans track coating dispatch.
         </p>
       </div>
     </div>

@@ -3,7 +3,7 @@ import autoTable from "jspdf-autotable";
 import type { Profile, PurchaseOrder } from "@/types";
 import { BRAND } from "./brand";
 import { COMPANY, PURCHASE_ORDER } from "./company";
-import { findProfileByCode, getProfileDesignImage } from "./profile";
+import { findProfileByCode, getProfileDesignImage, getProfileDyeCode } from "./profile";
 import { getPurchaseOrderTotalWeight } from "./purchase-order-form";
 
 const C = {
@@ -131,7 +131,8 @@ export async function generatePurchaseOrderPDF(
   // ---- Header: logo + title + company + address ----
   const logoW = 26;
   const titleH = 6;
-  const nameH = 9;
+  const companyNameFontSize = 18;
+  const nameH = 10;
   const addrFontSize = 9;
   const rightX = left + logoW;
   const rightW = contentWidth - logoW;
@@ -161,9 +162,9 @@ export async function generatePurchaseOrderPDF(
   }
 
   cellText("PURCHASE ORDER", rightX + rightW / 2, y + 4.2, { bold: true, size: 8.5, align: "center" });
-  cellText(PURCHASE_ORDER.companyName, rightX + rightW / 2, y + titleH + 6.2, {
+  cellText(PURCHASE_ORDER.companyName, rightX + rightW / 2, y + titleH + 6.5, {
     bold: true,
-    size: 15,
+    size: companyNameFontSize,
     align: "center",
   });
   cellText(addrLines, rightX + rightW / 2, y + titleH + nameH + 4, {
@@ -182,17 +183,23 @@ export async function generatePurchaseOrderPDF(
 
   y += headerBlockH;
 
-  // ---- Email | Phone row (full width) ----
+  // ---- Email | Phone row (two equal columns) ----
   const contactH = 6;
   const midX = left + contentWidth / 2;
+  const leftContactCenter = left + contentWidth / 4;
+  const rightContactCenter = left + (3 * contentWidth) / 4;
   doc.setFillColor(...C.white);
-  cellText(`Email: ${PURCHASE_ORDER.email}`, midX - 2, y + 4, { size: 7.5, align: "right" });
-  cellText(PURCHASE_ORDER.phone, midX + contentWidth / 2 - 2, y + 4, {
+  cellText(`Email: ${PURCHASE_ORDER.email}`, leftContactCenter, y + 4, {
     size: 7.5,
-    align: "right",
+    align: "center",
+  });
+  cellText(PURCHASE_ORDER.phone, rightContactCenter, y + 4, {
+    size: 7.5,
+    align: "center",
   });
   drawLine(left, y, left, y + contactH);
   drawLine(right, y, right, y + contactH);
+  drawLine(midX, y, midX, y + contactH);
   drawLine(left, y + contactH, right, y + contactH);
   y += contactH;
 
@@ -213,7 +220,7 @@ export async function generatePurchaseOrderPDF(
   ] as const;
   const leftBlockH = rowH + addressH + rowH * afterAddressRows.length;
   const metaRows = [
-    ["D.C. No", ""],
+    ["P.O. No", ""],
     ["Date", formatPoDate(order.date)],
   ] as const;
   const metaBlockH = Math.max(leftBlockH, rowH * metaRows.length);
@@ -273,10 +280,17 @@ export async function generatePurchaseOrderPDF(
     return profile ? getProfileDesignImage(profile) : "";
   };
 
+  const resolveItemDyeCode = (item: PurchaseOrder["items"][number]): string => {
+    const direct = item.dyeCode?.trim();
+    if (direct) return direct;
+    const profile = findProfileByCode(profiles, item.profileCode);
+    return profile ? getProfileDyeCode(profile) : "";
+  };
+
   const headLabels = [
     "SR.NO",
     "DIA DRAWING",
-    "DIA CODE",
+    "Die Code",
     "KG/MTR",
     "UOM",
     "LENGTH",
@@ -307,7 +321,7 @@ export async function generatePurchaseOrderPDF(
   const body = items.map((item, index) => [
     String(index + 1),
     "",
-    item.profileCode || "",
+    resolveItemDyeCode(item),
     formatKgPerMeter(item.kgPerMeter),
     item.uom?.trim() || "MM",
     formatLength(item.length),

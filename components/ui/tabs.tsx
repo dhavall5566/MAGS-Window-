@@ -21,11 +21,15 @@ function measureActiveTabIndicator(list: HTMLElement) {
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, children, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & {
+    /** Pass the controlled tab value so the indicator updates without DOM observers. */
+    activeValue?: string;
+  }
+>(({ className, children, activeValue, ...props }, ref) => {
   const listRef = React.useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = React.useState({ left: 0, width: 0 });
   const [indicatorReady, setIndicatorReady] = React.useState(false);
+  const frameRef = React.useRef<number | null>(null);
 
   const updateIndicator = React.useCallback(() => {
     const list = listRef.current;
@@ -40,38 +44,29 @@ const TabsList = React.forwardRef<
     );
   }, []);
 
+  const scheduleUpdate = React.useCallback(() => {
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      updateIndicator();
+    });
+  }, [updateIndicator]);
+
   React.useLayoutEffect(() => {
-    updateIndicator();
+    scheduleUpdate();
+  }, [activeValue, scheduleUpdate, children]);
 
-    const list = listRef.current;
-    if (!list) return;
-
-    const scheduleUpdate = () => {
-      requestAnimationFrame(updateIndicator);
-    };
-
-    const observer = new MutationObserver(scheduleUpdate);
-    observer.observe(list, {
-      attributes: true,
-      subtree: true,
-      attributeFilter: ["data-state"],
-    });
-
-    const resizeObserver = new ResizeObserver(scheduleUpdate);
-    resizeObserver.observe(list);
-    list.querySelectorAll('[role="tab"]').forEach((tab) => {
-      resizeObserver.observe(tab);
-    });
-
+  React.useEffect(() => {
     window.addEventListener("resize", scheduleUpdate);
     document.fonts?.ready.then(scheduleUpdate).catch(() => undefined);
 
     return () => {
-      observer.disconnect();
-      resizeObserver.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
     };
-  }, [updateIndicator, children]);
+  }, [scheduleUpdate]);
 
   return (
     <TabsPrimitive.List
@@ -120,12 +115,17 @@ TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content> & {
+    /** Keep mounted when inactive for instant tab switches (hidden via CSS). */
+    persist?: boolean;
+  }
+>(({ className, persist, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
+    forceMount={persist ? true : undefined}
     className={cn(
       "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      persist && "data-[state=inactive]:hidden",
       className
     )}
     {...props}

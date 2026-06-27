@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/app-data-init";
 import { AppShell } from "@/components/layout/app-shell";
 import { StoreDataBootstrap } from "@/components/providers/store-data-bootstrap";
 import { StoreHydration } from "@/components/providers/store-hydration";

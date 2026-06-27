@@ -10,11 +10,13 @@ import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { StockInwardFormFields } from "@/components/stock-inward/stock-inward-form-fields";
 import {
   buildStockInwardEntriesFromAddForm,
+  createEmptyStockInwardProfileRow,
   DEFAULT_STOCK_INWARD_SUPPLIER,
   stockInwardAddFormSchema,
   type StockInwardAddFormData,
 } from "@/lib/stock-inward-form";
 import { generateId } from "@/lib/utils";
+import { showAddedToast } from "@/lib/toast";
 import type { Profile, StockInward } from "@/types";
 
 interface AddStockInwardDialogProps {
@@ -24,12 +26,10 @@ interface AddStockInwardDialogProps {
 }
 
 const emptyFormValues: StockInwardAddFormData = {
-  dyeCode: "",
-  profileCode: "",
-  supplier: DEFAULT_STOCK_INWARD_SUPPLIER,
   date: new Date().toISOString().split("T")[0],
   invoiceNo: "",
-  lengthRows: [{ lengthInMeter: 0, totalWeightKg: 0, totalProfiles: 0 }],
+  supplier: DEFAULT_STOCK_INWARD_SUPPLIER,
+  profileRows: [createEmptyStockInwardProfileRow()],
 };
 
 export function AddStockInwardDialog({
@@ -53,7 +53,11 @@ export function AddStockInwardDialog({
     formState: { isSubmitting, isSubmitted },
   } = form;
 
-  const lengthRowCount = watch("lengthRows")?.length ?? 1;
+  const profileRows = watch("profileRows") ?? [];
+  const entryCount = profileRows.reduce(
+    (total, row) => total + (row.lengthRows?.length ?? 0),
+    0
+  );
 
   const resetForm = () => {
     reset({
@@ -71,6 +75,7 @@ export function AddStockInwardDialog({
     );
     if (entries.length === 0) return;
 
+    showAddedToast("Stock inward");
     onSave(entries);
     resetForm();
     setOpen(false);
@@ -83,6 +88,7 @@ export function AddStockInwardDialog({
         setOpen(next);
         if (!next) resetForm();
       }}
+      size="2xl"
       title="Add Stock Inward"
       description="Record incoming aluminium profile stock with weight, length, and supplier details."
       trigger={
@@ -98,7 +104,7 @@ export function AddStockInwardDialog({
             setOpen(false);
             resetForm();
           }}
-          submitLabel={lengthRowCount > 1 ? `Save ${lengthRowCount} Entries` : "Save Stock"}
+          submitLabel={entryCount > 1 ? `Save ${entryCount} Entries` : "Save Stock"}
           loadingLabel="Saving"
           isSubmitting={isSubmitting}
           disabled={profiles.length === 0}
@@ -106,7 +112,6 @@ export function AddStockInwardDialog({
       }
     >
       <StockInwardFormFields
-        mode="add"
         form={form}
         profiles={profiles}
         isSubmitted={isSubmitted}

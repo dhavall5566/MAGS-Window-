@@ -1,38 +1,72 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
-import { mergeManualConsumption } from "@/lib/challan-consumption";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
 import { buildStockLedgerRows, mergeStockInward } from "@/lib/stock-master";
+import { formatStockLength, normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
 import { formatDate, formatNumber } from "@/lib/utils";
-import { fetchJson } from "@/lib/fetch-json";
+import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
-import type { Consumption, StockInward, StockLedgerEntry } from "@/types";
+import type { Challan, StockInward, StockLedgerEntry } from "@/types";
+
+const selectStoreInward = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.stockInward ?? [];
+const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.challans ?? [];
+
+type LedgerTypeFilter = "all" | StockLedgerEntry["type"];
+
+const LEDGER_TYPE_TABS: { value: LedgerTypeFilter; label: string }[] = [
+  { value: "all", label: "All Entries" },
+  { value: "inward", label: "Inward" },
+  { value: "consumption", label: "Consumption" },
+  { value: "coating_sent", label: "Coating Sent" },
+];
 
 export default function StockLedgerPage() {
   const storeInward = useAppStore((s) => s.stockInward);
   const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
-  const storeConsumption = useAppStore((s) => s.consumption);
-  const [inward, setInward] = useState<StockInward[]>([]);
-  const [consumption, setConsumption] = useState<Consumption[]>([]);
+  const storeChallans = useAppStore((s) => s.challans);
+  const vendors = useAppStore((s) => s.vendors);
+  const [apiInward, setApiInward] = useCachedOrStoreList(
+    "/api/stock",
+    "inward",
+    selectStoreInward,
+    normalizeStockInwardRecord
+  );
+  const [apiChallans, setApiChallans] = useCachedOrStoreList(
+    "/api/challans",
+    "challans",
+    selectStoreChallans
+  );
+  const [activeTypeTab, setActiveTypeTab] = useState<LedgerTypeFilter>("all");
 
-  useEffect(() => {
-    fetchJson<{ inward?: StockInward[] }>("/api/stock").then((d) => {
-      setInward(
-        mergeStockInward(d?.inward ?? [], storeInward ?? [], deletedStockInwardIds ?? [])
-      );
-    });
-  }, [storeInward, deletedStockInwardIds]);
+  const inward = useMemo(
+    () =>
+      mergeStockInward(
+        apiInward,
+        (storeInward ?? []).map(normalizeStockInwardRecord),
+        deletedStockInwardIds ?? []
+      ),
+    [apiInward, storeInward, deletedStockInwardIds]
+  );
 
-  useEffect(() => {
-    fetchJson<{ consumption?: Consumption[] }>("/api/consumption").then((d) => {
-      setConsumption(mergeManualConsumption(d?.consumption ?? [], storeConsumption ?? []));
-    });
-  }, [storeConsumption]);
+  const consumption = useMemo(() => {
+    const enrichedStore = (storeChallans ?? []).map((challan) =>
+      enrichChallanVendorDetails(challan, vendors ?? [])
+    );
+    const enrichedApi = apiChallans.map((challan) =>
+      enrichChallanVendorDetails(challan, vendors ?? [])
+    );
+    return buildOutwardConsumptionFromChallans(enrichedApi, enrichedStore);
+  }, [apiChallans, storeChallans, vendors]);
 
   const ledger = useMemo(
     () => buildStockLedgerRows(inward, consumption),
@@ -47,10 +81,18 @@ export default function StockLedgerPage() {
   const { filterContent, filtersActive, clearFilters, matchesCode } =
     useProfileCodeFilters(profileCodes);
 
-  const filteredLedger = useMemo(
-    () => ledger.filter((row) => matchesCode(row.profileCode)),
-    [ledger, matchesCode]
-  );
+  const filteredLedger = useMemo(() => {
+    const byProfile = ledger.filter((row) => matchesCode(row.profileCode));
+    if (activeTypeTab === "all") return byProfile;
+    return byProfile.filter((row) => row.type === activeTypeTab);
+  }, [ledger, matchesCode, activeTypeTab]);
+
+  const handleClearFilters = useCallback(() => {
+    clearFilters();
+    setActiveTypeTab("all");
+  }, [clearFilters]);
+
+  const typeFilterActive = activeTypeTab !== "all";
 
   const handleLedgerSearch = useCallback((row: StockLedgerEntry, query: string) => {
     const q = query.toLowerCase();
@@ -139,7 +181,7 @@ export default function StockLedgerPage() {
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
         render: (row: StockLedgerEntry) =>
-          row.length ? formatNumber(row.length, 4) : "—",
+          row.length ? formatStockLength(row.length) : "—",
       },
       {
         key: "kgPerMeter",
@@ -174,6 +216,23 @@ export default function StockLedgerPage() {
         title="Stock Ledger"
         description="Complete transaction history for all profile stock movements"
       />
+
+      <Tabs
+        value={activeTypeTab}
+        onValueChange={(value) => setActiveTypeTab(value as LedgerTypeFilter)}
+        className="mb-3"
+      >
+        <div className="-mx-1 overflow-x-auto pb-1">
+          <TabsList activeValue={activeTypeTab} className="h-9 w-max min-w-full sm:min-w-0">
+            {LEDGER_TYPE_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+      </Tabs>
+
       <DataTable
         tableId="stock-ledger"
         data={filteredLedger}
@@ -181,8 +240,8 @@ export default function StockLedgerPage() {
         searchFilter={handleLedgerSearch}
         searchPlaceholder="Search by profile code, name, or reference..."
         filterContent={filterContent}
-        filtersActive={filtersActive}
-        onClearFilters={clearFilters}
+        filtersActive={filtersActive || typeFilterActive}
+        onClearFilters={handleClearFilters}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { VISIBLE_NAV_ORDER, getGroupLabel, getOrderedNavItems, isNavTabActive } from "@/lib/nav-items";
 import { useAppStore } from "@/lib/store";
+import { showSavedToast, runAfterToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 function reorderList(order: string[], fromIndex: number, toIndex: number) {
@@ -112,8 +113,13 @@ export function SidebarTabsEditor() {
     !ordersMatch(draftOrder, savedOrder) || !hiddenMatch(draftHiddenNavHrefs, savedHidden);
 
   const handleSave = () => {
-    setNavOrder(draftOrder);
-    setHiddenNavHrefs(draftHiddenNavHrefs);
+    runAfterToast(
+      () => showSavedToast("Navigation tabs"),
+      () => {
+        setNavOrder(draftOrder);
+        setHiddenNavHrefs(draftHiddenNavHrefs);
+      }
+    );
   };
 
   const handleResetDraft = () => {

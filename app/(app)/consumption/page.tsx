@@ -1,36 +1,46 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
-import { Badge } from "@/components/ui/badge";
-import { mergeManualConsumption } from "@/lib/challan-consumption";
+import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
 import {
   calculateTotalProfiles,
+  formatStockLength,
   STOCK_INWARD_KG_PER_METER,
 } from "@/lib/stock-inward-calculations";
 import { formatDate, formatNumber } from "@/lib/utils";
-import { fetchJson, getCachedJson } from "@/lib/fetch-json";
+import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
-import type { Consumption } from "@/types";
+import type { Challan, Consumption } from "@/types";
 
-function getInitialConsumption(storeConsumption: Consumption[]): Consumption[] {
-  const cached =
-    getCachedJson<{ consumption?: Consumption[] }>("/api/consumption")?.consumption ?? [];
-  return mergeManualConsumption(cached, storeConsumption);
-}
+const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.challans ?? [];
 
 export default function ConsumptionPage() {
-  const storeConsumption = useAppStore((s) => s.consumption);
-  const [data, setData] = useState<Consumption[]>([]);
+  const storeChallans = useAppStore((s) => s.challans);
+  const vendors = useAppStore((s) => s.vendors);
+  const [apiChallans, setApiChallans] = useCachedOrStoreList(
+    "/api/challans",
+    "challans",
+    selectStoreChallans
+  );
 
-  useEffect(() => {
-    setData(getInitialConsumption(useAppStore.getState().consumption ?? []));
-    fetchJson<{ consumption?: Consumption[] }>("/api/consumption").then((d) => {
-      setData(mergeManualConsumption(d?.consumption ?? [], storeConsumption ?? []));
+  const data = useMemo(() => {
+    const enrichedStore = (storeChallans ?? []).map((challan) =>
+      enrichChallanVendorDetails(challan, vendors ?? [])
+    );
+    const enrichedApi = apiChallans.map((challan) =>
+      enrichChallanVendorDetails(challan, vendors ?? [])
+    );
+    return buildOutwardConsumptionFromChallans(enrichedApi, enrichedStore).sort((a, b) => {
+      const dateSort = (b.date ?? "").localeCompare(a.date ?? "");
+      if (dateSort !== 0) return dateSort;
+      return (b.consumptionNo ?? "").localeCompare(a.consumptionNo ?? "");
     });
-  }, [storeConsumption]);
+  }, [apiChallans, storeChallans, vendors]);
 
   const profileCodes = useMemo(
     () => data.map((row) => row.profileCode).filter(Boolean),
@@ -72,24 +82,10 @@ export default function ConsumptionPage() {
     },
     {
       key: "challanNumber",
-      header: "Challan",
+      header: "Outward Challan",
       className: "whitespace-nowrap font-mono text-xs",
       align: "left" as const,
       render: (row: Consumption) => row.challanNumber ?? "—",
-    },
-    {
-      key: "challanType",
-      header: "Type",
-      className: "whitespace-nowrap",
-      align: "left" as const,
-      render: (row: Consumption) =>
-        row.challanType ? (
-          <Badge variant="outline" className="text-xs">
-            {row.challanType.replace("_", " ")}
-          </Badge>
-        ) : (
-          "—"
-        ),
     },
     {
       key: "projectName",
@@ -126,7 +122,7 @@ export default function ConsumptionPage() {
       header: "Length (m)",
       className: "whitespace-nowrap tabular-nums",
       align: "center" as const,
-      render: (row: Consumption) => formatNumber(row.length ?? 0, 4),
+      render: (row: Consumption) => formatStockLength(row.length),
     },
     {
       key: "kgPerMeter",
@@ -155,7 +151,7 @@ export default function ConsumptionPage() {
     <div>
       <PageHeader
         title="Material Consumption"
-        description="Auto-synced from challans — outward and coating subtract stock, returns add it back"
+        description="Auto-synced from outward challans — each line item issued on an outward challan appears here"
       />
       <DataTable
         tableId="consumption"

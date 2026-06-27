@@ -1,16 +1,21 @@
 import type { DashboardStats } from "@/types";
 
-const DEFAULT_STATS: DashboardStats = {
-  totalProfiles: 125,
-  availableStock: 15420,
-  lowStockProfiles: 8,
-  totalConsumption: 2200,
-  pendingCoating: 15,
-  completedCoating: 92,
-  scrapQuantity: 180,
+const EMPTY_STATS: DashboardStats = {
+  totalProfiles: 0,
+  availableStock: 0,
+  lowStockProfiles: 0,
+  totalConsumption: 0,
+  pendingCoating: 0,
+  completedCoating: 0,
+  scrapQuantity: 0,
 };
 
-/** Normalize dashboard API payload (flat or nested stats) */
+function readNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Normalize dashboard API payload (flat or nested stats). */
 export function parseDashboardResponse(data: Record<string, unknown> | null | undefined): {
   stats: DashboardStats;
   charts: Record<string, unknown[]>;
@@ -20,28 +25,29 @@ export function parseDashboardResponse(data: Record<string, unknown> | null | un
   const nested = (raw.stats ?? {}) as Partial<DashboardStats>;
 
   const stats: DashboardStats = {
-    totalProfiles:
-      Number(raw.totalProfiles ?? nested.totalProfiles) || DEFAULT_STATS.totalProfiles,
-    availableStock:
-      Number(raw.availableStock ?? nested.availableStock) || DEFAULT_STATS.availableStock,
-    lowStockProfiles:
-      Number(raw.lowStockProfiles ?? nested.lowStockProfiles) ||
-      DEFAULT_STATS.lowStockProfiles,
-    totalConsumption:
-      Number(raw.totalConsumption ?? nested.totalConsumption) ||
-      DEFAULT_STATS.totalConsumption,
-    pendingCoating:
-      Number(raw.pendingCoating ?? nested.pendingCoating) || DEFAULT_STATS.pendingCoating,
-    completedCoating:
-      Number(raw.completedCoating ?? nested.completedCoating) ||
-      DEFAULT_STATS.completedCoating,
-    scrapQuantity:
-      Number(raw.scrapQuantity ?? nested.scrapQuantity) || DEFAULT_STATS.scrapQuantity,
+    totalProfiles: readNumber(raw.totalProfiles ?? nested.totalProfiles),
+    availableStock: readNumber(raw.availableStock ?? nested.availableStock),
+    lowStockProfiles: readNumber(raw.lowStockProfiles ?? nested.lowStockProfiles),
+    totalConsumption: readNumber(raw.totalConsumption ?? nested.totalConsumption),
+    pendingCoating: readNumber(raw.pendingCoating ?? nested.pendingCoating),
+    completedCoating: readNumber(raw.completedCoating ?? nested.completedCoating),
+    scrapQuantity: readNumber(raw.scrapQuantity ?? nested.scrapQuantity),
   };
+
+  const charts = (raw.charts ?? {}) as Record<string, unknown[]>;
 
   return {
     stats,
-    charts: (raw.charts ?? {}) as Record<string, unknown[]>,
+    charts: {
+      inventoryOverview: charts.inventoryOverview ?? [],
+      monthlyStockMovement: charts.monthlyStockMovement ?? [],
+      consumptionTrends: charts.consumptionTrends ?? [],
+      colorDistribution: charts.colorDistribution ?? [],
+    },
     recentTransactions: (raw.recentTransactions ?? []) as unknown[],
   };
+}
+
+export function getEmptyDashboardStats(): DashboardStats {
+  return { ...EMPTY_STATS };
 }

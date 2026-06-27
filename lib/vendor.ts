@@ -1,5 +1,9 @@
 import type { Challan, Vendor, VendorType } from "@/types";
 import { VENDOR_TYPE_OPTIONS } from "@/lib/vendor-form";
+import {
+  isMagsOutwardChallanIssuer,
+  MAGS_OUTWARD_CHALLAN_VENDOR_ID,
+} from "@/lib/outward-challan-branding";
 
 export const MAGS_VENDOR_ID = "ven-021";
 
@@ -22,11 +26,17 @@ export function getVendorTypeLabel(vendorType: VendorType): string {
 
 export function getVendorsForChallanType(
   vendors: Vendor[],
-  challanType: "outward" | "powder_coating" | "return"
+  challanType: "outward" | "powder_coating"
 ): Vendor[] {
-  const vendorType: VendorType =
-    challanType === "powder_coating" ? "powder_coating" : "delivery";
-  return vendors.filter((vendor) => vendor.vendorType === vendorType);
+  if (challanType === "powder_coating") {
+    return vendors.filter((vendor) => vendor.vendorType === "powder_coating");
+  }
+  return vendors.filter(
+    (vendor) =>
+      (vendor.vendorType === "outward_challan" || vendor.vendorType === "delivery") &&
+      vendor.id !== MAGS_OUTWARD_CHALLAN_VENDOR_ID &&
+      !isMagsOutwardChallanIssuer(vendor)
+  );
 }
 
 export function formatPartyAddress(address: string | undefined): string {

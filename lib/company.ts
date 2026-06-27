@@ -45,5 +45,5 @@ export const PURCHASE_ORDER = {
   addressLine:
     "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3, Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
   email: "mags.brijesh@gmail.com",
-  phone: "+91 85113 18081",
+  phone: "9974293086",
 } as const;

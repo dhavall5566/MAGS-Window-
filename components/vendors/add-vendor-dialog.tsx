@@ -67,7 +67,7 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
       open={open}
       onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
       title="Add New Vendor"
-      description="Register a delivery or powder coating vendor for challans and stock operations."
+      description="Register a delivery, outward challan, or powder coating vendor for challans and stock operations."
       trigger={
         <Button>
           <Plus className="h-4 w-4" />

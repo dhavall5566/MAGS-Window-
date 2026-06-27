@@ -1,23 +1,40 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Scissors, Trash2 } from "lucide-react";
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
+import { isSplittableStockInward } from "@/lib/stock-inward-split";
 import type { StockInward } from "@/types";
 
 interface StockInwardRowActionsProps {
   entry: StockInward;
   onEdit: (entry: StockInward) => void;
   onDelete: (entry: StockInward) => void;
+  onSplit: (entry: StockInward) => void;
 }
 
 export function StockInwardRowActions({
   entry,
   onEdit,
   onDelete,
+  onSplit,
 }: StockInwardRowActionsProps) {
+  const canSplit = isSplittableStockInward(entry);
+
   return (
     <TableRowActions>
+      {canSplit && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => onSplit(entry)}
+          aria-label={`Split length for ${entry.inwardNo}`}
+        >
+          <Scissors className="h-4 w-4" />
+        </Button>
+      )}
       <Button
         type="button"
         variant="ghost"

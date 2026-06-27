@@ -3,7 +3,7 @@ import type { PurchaseOrder } from "@/types";
 
 const LIST_URL = "/api/purchase-orders";
 
-function mergePurchaseOrders(api: PurchaseOrder[], store: PurchaseOrder[]): PurchaseOrder[] {
+export function mergePurchaseOrders(api: PurchaseOrder[], store: PurchaseOrder[]): PurchaseOrder[] {
   const merged = [...api];
   for (const entry of store) {
     const existing = merged.find((item) => item.id === entry.id);

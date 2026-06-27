@@ -1,14 +1,11 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   Menu,
   Bell,
   Sun,
   Moon,
-  User,
-  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,10 +17,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import type { User as AppUser } from "@/types";
-import { mockNotifications } from "@/lib/mock-data/dashboard";
-import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   user?: AppUser | null;
@@ -33,27 +28,14 @@ interface HeaderProps {
 }
 
 export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: HeaderProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const isSettings = pathname?.startsWith("/settings");
-  const notifications = (mockNotifications ?? []).filter((n) => !n.read);
+  const notifications: never[] = [];
   const unreadCount = notifications.length;
-
-  const roleLabel =
-    user?.role === "administrator"
-      ? "Administrator"
-      : user?.role === "store_manager"
-        ? "Store Manager"
-        : "Production User";
 
   return (
     <header
       aria-label="Application header"
-      className={cn(
-        "sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:gap-4 sm:px-4 lg:px-6",
-        isSettings ? "min-h-16 py-3" : "h-16"
-      )}
+      className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:gap-4 sm:px-4 lg:px-6"
     >
       <Button
         ref={menuButtonRef}
@@ -67,21 +49,6 @@ export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: Header
       >
         <Menu className="h-5 w-5" />
       </Button>
-
-      {isSettings && (
-        <div className="min-w-0">
-          <h1
-            id="page-title"
-            tabIndex={-1}
-            className="text-xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl"
-          >
-            Settings
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            User, navigation, and company preferences
-          </p>
-        </div>
-      )}
 
       <div className="flex-1" />
 
@@ -114,42 +81,13 @@ export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: Header
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {(mockNotifications ?? []).slice(0, 4).map((n) => (
-              <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 py-2">
-                <span className="font-medium text-sm">{n.title}</span>
-                <span className="text-xs text-muted-foreground line-clamp-2">{n.message}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 px-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {user?.avatar ?? user?.name?.slice(0, 2) ?? "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden md:flex flex-col items-start text-left">
-                <span className="text-sm font-medium leading-none">{user?.name ?? "User"}</span>
-                <span className="text-xs text-muted-foreground">{roleLabel}</span>
-              </div>
-              <ChevronDown className="h-4 w-4 text-muted-foreground hidden md:block" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>
-              <div>{user?.name}</div>
-              <div className="text-xs font-normal text-muted-foreground">{user?.email}</div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
-              <User className="mr-2 h-4 w-4" />
-              Settings
+            <DropdownMenuItem disabled className="text-sm text-muted-foreground">
+              No notifications
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <UserAccountMenu user={user} />
       </div>
     </header>
   );

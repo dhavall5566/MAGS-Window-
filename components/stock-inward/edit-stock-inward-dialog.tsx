@@ -7,80 +7,81 @@ import { FormDialog } from "@/components/shared/form-dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { StockInwardFormFields } from "@/components/stock-inward/stock-inward-form-fields";
 import {
-  buildStockInwardEntry,
+  buildStockInwardEntriesFromEditForm,
+  createEmptyStockInwardProfileRow,
   DEFAULT_STOCK_INWARD_SUPPLIER,
-  normalizeStockInwardSupplier,
-  stockInwardFormSchema,
-  type StockInwardFormData,
+  stockInwardAddFormSchema,
+  stockInwardEntryToAddFormData,
+  type StockInwardAddFormData,
 } from "@/lib/stock-inward-form";
+import { generateId } from "@/lib/utils";
+import { showSavedToast } from "@/lib/toast";
 import type { Profile, StockInward } from "@/types";
 
 interface EditStockInwardDialogProps {
   entry: StockInward | null;
   profiles: Profile[];
+  existingInward: StockInward[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (entry: StockInward) => void;
+  onSave: (entries: StockInward[]) => void;
 }
+
+const emptyFormValues: StockInwardAddFormData = {
+  date: new Date().toISOString().split("T")[0],
+  invoiceNo: "",
+  supplier: DEFAULT_STOCK_INWARD_SUPPLIER,
+  profileRows: [createEmptyStockInwardProfileRow()],
+};
 
 export function EditStockInwardDialog({
   entry,
   profiles,
+  existingInward,
   open,
   onOpenChange,
   onSave,
 }: EditStockInwardDialogProps) {
-  const form = useForm<StockInwardFormData>({
-    resolver: zodResolver(stockInwardFormSchema),
+  const form = useForm<StockInwardAddFormData>({
+    resolver: zodResolver(stockInwardAddFormSchema),
     mode: "onSubmit",
     reValidateMode: "onBlur",
-    defaultValues: {
-      dyeCode: "",
-      profileCode: "",
-      supplier: DEFAULT_STOCK_INWARD_SUPPLIER,
-      date: "",
-      invoiceNo: "",
-      totalWeightKg: 0,
-      totalProfiles: 0,
-      lengthInMeter: 0,
-    },
+    defaultValues: emptyFormValues,
   });
 
   const {
     handleSubmit,
     reset,
+    watch,
     formState: { isSubmitting, isSubmitted },
   } = form;
 
+  const profileRows = watch("profileRows") ?? [];
+  const entryCount = profileRows.reduce(
+    (total, row) => total + (row.lengthRows?.length ?? 0),
+    0
+  );
+
   useEffect(() => {
     if (open && entry) {
-      reset(
-        {
-          dyeCode: entry.dyeCode ?? "",
-          profileCode: entry.profileCode,
-          supplier: normalizeStockInwardSupplier(entry.supplier),
-          date: entry.date,
-          invoiceNo: entry.invoiceNo ?? "",
-          totalWeightKg: entry.totalWeightKg ?? entry.weight ?? 0,
-          totalProfiles: entry.quantity ?? 0,
-          lengthInMeter: entry.length ?? 0,
-        },
-        { keepIsSubmitted: false }
-      );
+      reset(stockInwardEntryToAddFormData(entry, profiles), { keepIsSubmitted: false });
     }
-  }, [open, entry, reset]);
+  }, [open, entry, reset, profiles]);
 
-  const onSubmit = (data: StockInwardFormData) => {
+  const onSubmit = (data: StockInwardAddFormData) => {
     if (!entry) return;
 
-    const updated = buildStockInwardEntry(data, profiles, {
-      id: entry.id,
-      inwardNo: entry.inwardNo,
-      remarks: entry.remarks,
-    });
-    if (!updated) return;
+    const entries = buildStockInwardEntriesFromEditForm(
+      data,
+      profiles,
+      entry,
+      existingInward,
+      () => generateId("si")
+    );
+    if (entries.length === 0) return;
 
-    onSave(updated);
+    showSavedToast("Stock inward");
+    onSave(entries);
     onOpenChange(false);
   };
 
@@ -88,16 +89,17 @@ export function EditStockInwardDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      size="2xl"
       title="Edit Stock Inward"
-      description="Update weight, length, and supplier for this inward entry."
+      description="Update incoming aluminium profile stock with weight, length, and supplier details."
       onSubmit={handleSubmit(onSubmit)}
       footer={
         <FormDialogActions
           onCancel={() => onOpenChange(false)}
-          submitLabel="Save Changes"
+          submitLabel={entryCount > 1 ? `Save ${entryCount} Entries` : "Save Changes"}
           loadingLabel="Saving"
           isSubmitting={isSubmitting}
-          disabled={!entry}
+          disabled={!entry || profiles.length === 0}
         />
       }
     >

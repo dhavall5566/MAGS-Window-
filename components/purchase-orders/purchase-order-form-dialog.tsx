@@ -18,6 +18,7 @@ import {
   buildPurchaseOrderItemFromProfile,
   computePurchaseOrderItemQty,
   computePurchaseOrderItemWeight,
+  DEFAULT_PO_UOM,
   defaultPurchaseOrderItem,
   generatePurchaseOrderNumber,
   getPurchaseOrderTotalWeight,
@@ -29,6 +30,7 @@ import { findProfileByCode, getProfileDyeCode, getProfileSelectOptions } from "@
 import { findProfileByDyeCode } from "@/lib/stock-inward-calculations";
 import { findVendorByPartyName, getVendorChallanDetails, getVendorPartyNames } from "@/lib/vendor";
 import { formatNumber, generateId } from "@/lib/utils";
+import { showAddedToast, showSavedToast } from "@/lib/toast";
 import type { Profile, PurchaseOrder, Vendor } from "@/types";
 
 interface PurchaseOrderFormDialogProps {
@@ -157,7 +159,8 @@ export function PurchaseOrderFormDialog({
       computePurchaseOrderItemWeight(
         Number(item.kgPerMeter) || 0,
         Number(item.length) || 0,
-        Number(item.qty) || 0
+        Number(item.qty) || 0,
+        item.uom || DEFAULT_PO_UOM
       ),
       { shouldValidate: isSubmitted }
     );
@@ -170,7 +173,8 @@ export function PurchaseOrderFormDialog({
       computePurchaseOrderItemQty(
         Number(item.kgPerMeter) || 0,
         Number(item.length) || 0,
-        Number(item.totalWeightKg) || 0
+        Number(item.totalWeightKg) || 0,
+        item.uom || DEFAULT_PO_UOM
       ),
       { shouldValidate: isSubmitted }
     );
@@ -236,8 +240,10 @@ export function PurchaseOrderFormDialog({
     const order = buildPurchaseOrder(data, profiles, {
       id: orderToEdit?.id ?? generateId("po"),
     });
-    onSave(order);
+    if (isEdit) showSavedToast("Purchase order");
+    else showAddedToast("Purchase order");
     setOpen(false);
+    void onSave(order);
   };
 
   return (

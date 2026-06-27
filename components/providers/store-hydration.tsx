@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAppStore } from "@/lib/store";
 
-/** Rehydrate persisted store after mount so SSR and first client render match. */
+/** Rehydrate persisted store after React hydration to avoid SSR/client markup mismatches. */
 export function StoreHydration() {
   useEffect(() => {
     void useAppStore.persist.rehydrate();

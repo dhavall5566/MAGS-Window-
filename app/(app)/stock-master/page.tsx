@@ -1,55 +1,65 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
-import { mergeManualConsumption } from "@/lib/challan-consumption";
+import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
 import { buildStockMasterRows, mergeStockInward } from "@/lib/stock-master";
+import {
+  formatStockLength,
+  normalizeStockInwardRecord,
+} from "@/lib/stock-inward-calculations";
 import { formatNumber } from "@/lib/utils";
-import { fetchJson, getCachedJson } from "@/lib/fetch-json";
+import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
-import type { Consumption, StockInward } from "@/types";
+import type { Challan, StockInward } from "@/types";
+
+const selectStoreInward = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.stockInward ?? [];
+const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
+  state.challans ?? [];
 
 export default function StockMasterPage() {
   const storeInward = useAppStore((s) => s.stockInward);
   const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
-  const storeConsumption = useAppStore((s) => s.consumption);
+  const storeChallans = useAppStore((s) => s.challans);
+  const vendors = useAppStore((s) => s.vendors);
   const highlightLowStock = useAppStore((s) => s.settings.highlightLowStock);
   const lowStockThresholdKg = useAppStore((s) => s.settings.lowStockThresholdKg);
-  const [inward, setInward] = useState<StockInward[]>([]);
-  const [consumption, setConsumption] = useState<Consumption[]>([]);
+  const [apiInward, setApiInward] = useCachedOrStoreList(
+    "/api/stock",
+    "inward",
+    selectStoreInward,
+    normalizeStockInwardRecord
+  );
+  const [apiChallans, setApiChallans] = useCachedOrStoreList(
+    "/api/challans",
+    "challans",
+    selectStoreChallans
+  );
 
-  useEffect(() => {
-    setInward(
+  const inward = useMemo(
+    () =>
       mergeStockInward(
-        getCachedJson<{ inward?: StockInward[] }>("/api/stock")?.inward ?? [],
-        useAppStore.getState().stockInward ?? [],
-        useAppStore.getState().deletedStockInwardIds ?? []
-      )
-    );
-    setConsumption(
-      mergeManualConsumption(
-        getCachedJson<{ consumption?: Consumption[] }>("/api/consumption")?.consumption ?? [],
-        useAppStore.getState().consumption ?? []
-      )
-    );
-  }, []);
+        apiInward,
+        (storeInward ?? []).map(normalizeStockInwardRecord),
+        deletedStockInwardIds ?? []
+      ),
+    [apiInward, storeInward, deletedStockInwardIds]
+  );
 
-  useEffect(() => {
-    fetchJson<{ inward?: StockInward[] }>("/api/stock").then((d) => {
-      setInward(
-        mergeStockInward(d?.inward ?? [], storeInward ?? [], deletedStockInwardIds ?? [])
-      );
-    });
-  }, [storeInward, deletedStockInwardIds]);
-
-  useEffect(() => {
-    fetchJson<{ consumption?: Consumption[] }>("/api/consumption").then((d) => {
-      setConsumption(mergeManualConsumption(d?.consumption ?? [], storeConsumption ?? []));
-    });
-  }, [storeConsumption]);
+  const consumption = useMemo(() => {
+    const enrichedStore = (storeChallans ?? []).map((challan) =>
+      enrichChallanVendorDetails(challan, vendors ?? [])
+    );
+    const enrichedApi = apiChallans.map((challan) =>
+      enrichChallanVendorDetails(challan, vendors ?? [])
+    );
+    return buildOutwardConsumptionFromChallans(enrichedApi, enrichedStore);
+  }, [apiChallans, storeChallans, vendors]);
 
   const rows = useMemo(
     () => buildStockMasterRows(inward, consumption),
@@ -74,7 +84,7 @@ export default function StockMasterPage() {
     return (
       row.profileName.toLowerCase().includes(q) ||
       row.profileCode.toLowerCase().includes(q) ||
-      formatNumber(row.length, 4).includes(q)
+      formatStockLength(row.length).includes(q)
     );
   }, []);
 
@@ -121,7 +131,7 @@ export default function StockMasterPage() {
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
         render: (row: (typeof rows)[number]) =>
-          row.length ? formatNumber(row.length, 4) : "—",
+          row.length ? formatStockLength(row.length) : "—",
       },
       {
         key: "kgPerMeter",
@@ -147,7 +157,7 @@ export default function StockMasterPage() {
     <div>
       <PageHeader
         title="Stock Master"
-        description="Stock inward minus consumption, grouped by profile and length"
+        description="Stock inward minus outward challan usage, grouped by profile and length"
       />
       <DataTable
         tableId="stock-master"

@@ -272,21 +272,56 @@ export function getWeightPerMeter(
   return purchaseQty / conversionQty;
 }
 
-/** Weight (kg) from kg-per-meter × length (m) × qty. */
-export function weightFromConversionUnit(
-  profile: Pick<Profile, "purchaseUnitQty" | "conversionUnitQty">,
-  item: Pick<ChallanItem, "length" | "qty">
-): number {
-  const kgPerMeter = getWeightPerMeter(profile);
-  return Math.round(kgPerMeter * item.length * item.qty * 100) / 100;
+export type LengthUnit = "MM" | "M" | "MTR";
+
+/** Normalize length UOM — MM stays mm; M/MTR/meter values are treated as meters. */
+export function normalizeLengthUnit(uom?: string): LengthUnit {
+  const unit = String(uom ?? "M")
+    .trim()
+    .toUpperCase();
+  return unit === "MM" ? "MM" : "M";
 }
 
-/** Convert kg to meters using derived kg-per-meter. */
+/** Convert stored length to meters. Divide by 1000 only when UOM is MM. */
+export function lengthToMeters(length: number, uom?: string): number {
+  const value = Number(length) || 0;
+  if (!value) return 0;
+  return normalizeLengthUnit(uom) === "MM" ? value / 1000 : value;
+}
+
+/** Total weight (kg) = KG/MTR × length (m) × qty. Length is converted to meters when UOM is MM. */
+export function computeLineWeightKg(
+  kgPerMeter: number,
+  length: number,
+  qty: number,
+  uom?: string
+): number {
+  const lengthMeters = lengthToMeters(length, uom);
+  const kg = Number(kgPerMeter) || 0;
+  const pieces = Number(qty) || 0;
+  if (!kg || !lengthMeters || !pieces) return 0;
+  return Math.round(kg * lengthMeters * pieces * 100) / 100;
+}
+
+/** Weight (kg) = kg/mtr × length (m) × qty. Challan length is always in meters. */
+export function weightFromConversionUnit(
+  profile: Pick<Profile, "purchaseUnitQty" | "conversionUnitQty" | "weightPerMeter">,
+  item: Pick<ChallanItem, "length" | "qty">
+): number {
+  return computeLineWeightKg(
+    getProfileWeightPerMeter(profile),
+    item.length,
+    item.qty,
+    "M"
+  );
+}
+
+/** Convert kg to meters using profile kg/mtr. */
 export function metersFromWeightKg(
-  profile: Pick<Profile, "purchaseUnitQty" | "conversionUnitQty">,
+  profile: Pick<Profile, "purchaseUnitQty" | "conversionUnitQty" | "weightPerMeter">,
   weightKg: number
 ): number {
-  const kgPerMeter = getWeightPerMeter(profile);
+  const kgPerMeter = getProfileWeightPerMeter(profile);
   if (!kgPerMeter) return 0;
   return Math.round((weightKg / kgPerMeter) * 100) / 100;
 }
@@ -419,6 +454,139 @@ export function getProfileRmmValue(
   }
 
   return Math.round(length * RMM_TO_METER_FACTOR * 100) / 100;
+}
+
+/** Multiplier for powder coating challan rate: (RMM / 305) × Rate × 3.24 */
+export const POWDER_COATING_RATE_MULTIPLIER = 3.24;
+
+export const POWDER_COATING_RMTR_RATE_LABEL = "R MTR RATE";
+
+export const POWDER_COATING_RATE_FIELD_LABEL = "Rate";
+
+export const POWDER_COATING_RMM_FORMULA =
+  "RMM = Length (m) × Rate × 1000";
+
+export const POWDER_COATING_RATE_FORMULA =
+  "R MTR RATE = (RMM / 305) × Rate × 3.24";
+
+/** Manual challan Rate input, falling back to profile KG/MTR for legacy rows. */
+export function resolvePowderCoatingInputRate(
+  coatingRate?: number | null,
+  profile?: Pick<
+    Profile,
+    "rate" | "perKgRate" | "weightPerMeter" | "purchaseUnitQty" | "conversionUnitQty"
+  > | null
+): number {
+  const manualRate = Number(coatingRate) || 0;
+  if (manualRate > 0) return manualRate;
+  if (profile) return getPowderCoatingFormulaRate(profile);
+  return 0;
+}
+
+/** @deprecated Prefer resolvePowderCoatingInputRate with challan coatingRate. */
+export function getPowderCoatingFormulaRate(
+  profile: Pick<
+    Profile,
+    "rate" | "perKgRate" | "weightPerMeter" | "purchaseUnitQty" | "conversionUnitQty"
+  >
+): number {
+  const kgPerMeter = getProfileWeightPerMeter(profile);
+  if (kgPerMeter > 0) return kgPerMeter;
+  return profile.rate ?? profile.perKgRate ?? 0;
+}
+
+/** RMM for a powder coating challan line — length (m) × Rate × 1000. */
+export function calculatePowderCoatingRmmFromLength(
+  lengthInMeters: number,
+  formulaRate: number
+): number {
+  const length = Number(lengthInMeters) || 0;
+  const rate = Number(formulaRate) || 0;
+  if (!length || !rate) return 0;
+  return Math.round(length * rate * 1000 * 100) / 100;
+}
+
+/** @deprecated Use calculatePowderCoatingRmmFromLength for challan line items. */
+export function getProfilePowderCoatingRmm(
+  profile: Pick<
+    Profile,
+    "powderCoatingRmm" | "purchaseUnitQty" | "rmm" | "conversionUnitQty" | "weightPerMeter"
+  >,
+  lengthInMeter?: number
+): number {
+  const kgPerMeter = getProfileWeightPerMeter(profile);
+  if (lengthInMeter && lengthInMeter > 0 && kgPerMeter > 0) {
+    return calculatePowderCoatingRmmFromLength(lengthInMeter, kgPerMeter);
+  }
+  const powderRmm = profile.powderCoatingRmm ?? 0;
+  if (powderRmm > 0) return powderRmm;
+  return getProfileRmmValue(profile, lengthInMeter);
+}
+
+/** Powder coating R MTR RATE = (RMM / 305) × Rate × 3.24 */
+export function calculatePowderCoatingRateFromRmmAndRate(
+  rmm: number,
+  formulaRate: number
+): number {
+  if (!rmm || !formulaRate) return 0;
+  return (
+    Math.round(
+      ((rmm / RMM_TO_METER_FACTOR) * formulaRate * POWDER_COATING_RATE_MULTIPLIER) * 100
+    ) / 100
+  );
+}
+
+/** Per-line R MTR RATE for powder coating challans. */
+export function getPowderCoatingChallanRate(
+  profile: Pick<
+    Profile,
+    | "rate"
+    | "perKgRate"
+    | "powderCoatingRmm"
+    | "purchaseUnitQty"
+    | "rmm"
+    | "conversionUnitQty"
+    | "weightPerMeter"
+  >,
+  lengthInMeter?: number,
+  coatingRate?: number | null
+): number {
+  const formulaRate = resolvePowderCoatingInputRate(coatingRate, profile);
+  const length = Number(lengthInMeter) || 0;
+  if (!formulaRate || !length) return 0;
+  const rmm = calculatePowderCoatingRmmFromLength(length, formulaRate);
+  return calculatePowderCoatingRateFromRmmAndRate(rmm, formulaRate);
+}
+
+export function getPowderCoatingItemRate(
+  item: Pick<ChallanItem, "rate" | "profileCode" | "length">,
+  profile?: Profile | null,
+  coatingRate?: number | null
+): number {
+  if (profile) {
+    const length = Number(item.length) || 0;
+    return getPowderCoatingChallanRate(
+      profile,
+      length > 0 ? length : undefined,
+      coatingRate
+    );
+  }
+  if (item.rate != null && item.rate > 0) return item.rate;
+  return 0;
+}
+
+/** Powder coating line amount = Length (m) × R MTR RATE × Qty */
+export function calculatePowderCoatingItemAmount(
+  item: Pick<ChallanItem, "length" | "qty" | "rate" | "profileCode">,
+  profile?: Profile | null,
+  coatingRate?: number | null
+): number {
+  const length = Number(item.length) || 0;
+  const qty = Number(item.qty) || 0;
+  if (!length || !qty) return 0;
+  const rate = getPowderCoatingItemRate(item, profile, coatingRate);
+  if (!rate) return 0;
+  return Math.round(length * qty * rate * 100) / 100;
 }
 
 function calculateRatePerMeter(lengthInMeter: number, rate: number): number {

@@ -78,18 +78,29 @@ export interface StockInward {
   dyeCode: string;
   profileCode: string;
   profileName: string;
+  profileImage?: string;
   /** Total inward weight in kg. */
   totalWeightKg: number;
-  lengthFeet: number;
-  /** Length in meters (converted from feet). */
+  /** Length in meters. */
   length: number;
   kgPerMeter: number;
-  rate: number;
   /** NOS = totalWeight / (length × kgPerMeter). */
   quantity: number;
   /** Alias of totalWeightKg for stock aggregation. */
   weight: number;
   remarks?: string;
+  /** Parent inward id when this row was created from a length split. */
+  splitFromId?: string;
+  /** Parent inward number for display. */
+  splitFromInwardNo?: string;
+  /** ISO date when the split occurred. */
+  splitAt?: string;
+  /** Parent rows are marked split and excluded from stock totals. */
+  status?: "active" | "split";
+  /** @deprecated Removed from stock inward. Legacy rows may still include this. */
+  lengthFeet?: number;
+  /** @deprecated Removed from stock inward. Legacy rows may still include this. */
+  rate?: number;
 }
 
 export interface Consumption {
@@ -152,7 +163,7 @@ export interface Scrap {
   disposition: string;
 }
 
-export type VendorType = "delivery" | "powder_coating";
+export type VendorType = "delivery" | "powder_coating" | "outward_challan";
 
 export interface Vendor {
   id: string;
@@ -163,6 +174,13 @@ export interface Vendor {
   email: string;
   gstNo?: string;
   vendorType: VendorType;
+  /** PDF header company name for outward challan issuer. */
+  challanHeaderName?: string;
+  challanAddressLine1?: string;
+  challanAddressLine2?: string;
+  challanEmail?: string;
+  challanPhone?: string;
+  challanSignatoryLine?: string;
 }
 
 export interface ChallanItem {
@@ -172,15 +190,16 @@ export interface ChallanItem {
   length: number;
   qty: number;
   weight: number;
+  /** R MTR RATE (₹/m) on powder coating challan line items. */
   rate?: number;
 }
 
 export interface ChallanVendorDetails {
   vendorName: string;
   vendorAddress?: string;
+  vendorGstNo?: string;
   vendorPersonName?: string;
   vendorContact?: string;
-  vendorGstNo?: string;
 }
 
 export interface OutwardChallan extends ChallanVendorDetails {
@@ -189,6 +208,15 @@ export interface OutwardChallan extends ChallanVendorDetails {
   date: string;
   vehicleNumber: string;
   driverName: string;
+  projectName?: string;
+  totalBundles?: number;
+  totalWeightManual?: number;
+  /** Sum of all line item profile weights (kg). */
+  totalWeightAllProfiles?: number;
+  totalNoOfProfiles?: number;
+  outwardChallanVendorId?: string;
+  outwardChallanVendorName?: string;
+  /** @deprecated Legacy outward field — migrated to projectName. */
   remarks?: string;
   items: ChallanItem[];
   type: "outward";
@@ -200,9 +228,13 @@ export interface PowderCoatingChallan extends ChallanVendorDetails {
   date: string;
   vehicleNumber: string;
   driverName: string;
+  projectName?: string;
+  /** @deprecated Legacy powder coating field — migrated to projectName. */
   remarks?: string;
   items: ChallanItem[];
   color: CoatingColor;
+  /** Manual Rate used in R MTR RATE formula (replaces profile KG/MTR). */
+  coatingRate?: number;
   type: "powder_coating";
   sourceOutwardChallanId?: string;
   sourceOutwardChallanNumber?: string;

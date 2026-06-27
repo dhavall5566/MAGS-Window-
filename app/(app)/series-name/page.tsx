@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { AddSeriesDialog } from "@/components/series/add-series-dialog";
@@ -13,7 +13,6 @@ import { useAppStore } from "@/lib/store";
 import type { SeriesName } from "@/types";
 
 export default function SeriesNamePage() {
-  const [mounted, setMounted] = useState(false);
   const [editingSeries, setEditingSeries] = useState<SeriesName | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -21,10 +20,6 @@ export default function SeriesNamePage() {
   const addSeriesName = useAppStore((s) => s.addSeriesName);
   const updateSeriesName = useAppStore((s) => s.updateSeriesName);
   const toggleSeriesStatus = useAppStore((s) => s.toggleSeriesStatus);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleEdit = useCallback((row: SeriesName) => {
     setEditingSeries(row);
@@ -90,20 +85,6 @@ export default function SeriesNamePage() {
     ],
     [handleEdit, toggleSeriesStatus]
   );
-
-  if (!mounted) {
-    return (
-      <div>
-        <PageHeader
-          title="Series Name"
-          description="Manage aluminium profile series used in profile master"
-        />
-        <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
-          Loading...
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div>

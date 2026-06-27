@@ -6,7 +6,7 @@ import type { Profile, SeriesName, Challan, StockInward, Consumption, PowderCoat
 import { mockVendors } from "@/lib/mock-data/vendors";
 import { mockUsers } from "@/lib/mock-data/users";
 import { enrichChallanVendorDetails, normalizeVendor } from "@/lib/vendor";
-import { getManualConsumption } from "@/lib/challan-consumption";
+import { getManualConsumption, filterVisibleChallans } from "@/lib/challan-consumption";
 import { normalizeProfile } from "@/lib/profile";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "@/lib/app-settings";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/lib/role-permissions";
 import { normalizeStockInwardSupplier } from "@/lib/stock-inward-form";
 import { normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
+import { showAddedToast, showSavedToast, showDeletedToast } from "@/lib/toast";
 interface AppState {
   profiles: Profile[];
   seriesNames: SeriesName[];
@@ -99,16 +100,20 @@ export const useAppStore = create<AppState>()(
       rolePermissions: DEFAULT_ROLE_PERMISSIONS,
       userPermissionOverrides: {},
       setProfiles: (profiles) => set({ profiles }),
-      addProfile: (profile) =>
+      addProfile: (profile) => {
         set((s) => ({
           profiles: [...(s.profiles ?? []), profile],
-        })),
-      updateProfile: (id, updates) =>
+        }));
+        showAddedToast("Profile");
+      },
+      updateProfile: (id, updates) => {
         set((s) => ({
           profiles: (s.profiles ?? []).map((p) =>
             p.id === id ? { ...p, ...updates } : p
           ),
-        })),
+        }));
+        showSavedToast("Profile");
+      },
       toggleProfileStatus: (id) =>
         set((s) => ({
           profiles: (s.profiles ?? []).map((p) =>
@@ -120,18 +125,24 @@ export const useAppStore = create<AppState>()(
               : p
           ),
         })),
-      addSeriesName: (series) =>
-        set((s) => ({ seriesNames: [...(s.seriesNames ?? []), series] })),
-      updateSeriesName: (id, updates) =>
+      addSeriesName: (series) => {
+        set((s) => ({ seriesNames: [...(s.seriesNames ?? []), series] }));
+        showAddedToast("Series");
+      },
+      updateSeriesName: (id, updates) => {
         set((s) => ({
           seriesNames: (s.seriesNames ?? []).map((item) =>
             item.id === id ? { ...item, ...updates } : item
           ),
-        })),
-      deleteSeriesName: (id) =>
+        }));
+        showSavedToast("Series");
+      },
+      deleteSeriesName: (id) => {
         set((s) => ({
           seriesNames: (s.seriesNames ?? []).filter((item) => item.id !== id),
-        })),
+        }));
+        showDeletedToast("Series");
+      },
       toggleSeriesStatus: (id) =>
         set((s) => ({
           seriesNames: (s.seriesNames ?? []).map((item) =>
@@ -143,98 +154,138 @@ export const useAppStore = create<AppState>()(
               : item
           ),
         })),
-      addChallan: (challan) =>
-        set((s) => ({ challans: [...(s.challans ?? []), challan] })),
-      updateChallan: (id, updates) =>
+      addChallan: (challan) => {
+        if (challan.type === "return") return;
+        set((s) => ({ challans: [...(s.challans ?? []), challan] }));
+        showAddedToast("Challan");
+      },
+      updateChallan: (id, updates) => {
         set((s) => ({
           challans: (s.challans ?? []).map((c) =>
             c.id === id ? ({ ...c, ...updates } as Challan) : c
           ),
-        })),
-      replaceChallan: (challan) =>
+        }));
+        showSavedToast("Challan");
+      },
+      replaceChallan: (challan) => {
+        if (challan.type === "return") return;
+        const exists = (useAppStore.getState().challans ?? []).some((c) => c.id === challan.id);
         set((s) => {
-          const exists = (s.challans ?? []).some((c) => c.id === challan.id);
+          const hasChallan = (s.challans ?? []).some((c) => c.id === challan.id);
           return {
-            challans: exists
+            challans: hasChallan
               ? (s.challans ?? []).map((c) => (c.id === challan.id ? challan : c))
               : [...(s.challans ?? []), challan],
           };
-        }),
-      deleteChallan: (id) =>
+        });
+        if (exists) showSavedToast("Challan");
+        else showAddedToast("Challan");
+      },
+      deleteChallan: (id) => {
         set((s) => ({
           challans: (s.challans ?? []).filter((c) => c.id !== id),
-        })),
-      addStockInward: (entry) =>
-        set((s) => ({ stockInward: [...(s.stockInward ?? []), entry] })),
-      upsertStockInward: (entry) =>
+        }));
+        showDeletedToast("Challan");
+      },
+      addStockInward: (entry) => {
+        set((s) => ({ stockInward: [...(s.stockInward ?? []), entry] }));
+      },
+      upsertStockInward: (entry) => {
         set((s) => {
           const list = s.stockInward ?? [];
-          const exists = list.some((e) => e.id === entry.id);
+          const hasEntry = list.some((e) => e.id === entry.id);
           return {
-            stockInward: exists
+            stockInward: hasEntry
               ? list.map((e) => (e.id === entry.id ? entry : e))
               : [...list, entry],
           };
-        }),
-      deleteStockInward: (id) =>
+        });
+      },
+      deleteStockInward: (id) => {
         set((s) => ({
           stockInward: (s.stockInward ?? []).filter((entry) => entry.id !== id),
           deletedStockInwardIds: [...(s.deletedStockInwardIds ?? []), id],
-        })),
-      addConsumption: (entry) =>
-        set((s) => ({ consumption: [...(s.consumption ?? []), entry] })),
-      addPowderCoating: (entry) =>
-        set((s) => ({ powderCoating: [...(s.powderCoating ?? []), entry] })),
-      updatePowderCoating: (id, updates) =>
+        }));
+        showDeletedToast("Stock inward");
+      },
+      addConsumption: (entry) => {
+        set((s) => ({ consumption: [...(s.consumption ?? []), entry] }));
+        showAddedToast("Consumption");
+      },
+      addPowderCoating: (entry) => {
+        set((s) => ({ powderCoating: [...(s.powderCoating ?? []), entry] }));
+        showAddedToast("Powder coating");
+      },
+      updatePowderCoating: (id, updates) => {
         set((s) => ({
           powderCoating: (s.powderCoating ?? []).map((p) =>
             p.id === id ? { ...p, ...updates } : p
           ),
-        })),
-      deletePowderCoating: (id) =>
+        }));
+        showSavedToast("Powder coating");
+      },
+      deletePowderCoating: (id) => {
         set((s) => ({
           powderCoating: (s.powderCoating ?? []).filter((p) => p.id !== id),
-        })),
-      addScrap: (entry) =>
-        set((s) => ({ scrap: [...(s.scrap ?? []), entry] })),
-      addVendor: (vendor) =>
-        set((s) => ({ vendors: [...(s.vendors ?? []), vendor] })),
-      updateVendor: (id, updates) =>
+        }));
+        showDeletedToast("Powder coating");
+      },
+      addScrap: (entry) => {
+        set((s) => ({ scrap: [...(s.scrap ?? []), entry] }));
+        showAddedToast("Scrap entry");
+      },
+      addVendor: (vendor) => {
+        set((s) => ({ vendors: [...(s.vendors ?? []), vendor] }));
+        showAddedToast("Vendor");
+      },
+      updateVendor: (id, updates) => {
         set((s) => ({
           vendors: (s.vendors ?? []).map((vendor) =>
             vendor.id === id ? { ...vendor, ...updates } : vendor
           ),
-        })),
-      deleteVendor: (id) =>
+        }));
+        showSavedToast("Vendor");
+      },
+      deleteVendor: (id) => {
         set((s) => ({
           vendors: (s.vendors ?? []).filter((vendor) => vendor.id !== id),
-        })),
-      addUser: (user) =>
+        }));
+        showDeletedToast("Vendor");
+      },
+      addUser: (user) => {
         set((s) => ({
           users: [...(s.users ?? []), user],
           userPermissionOverrides: {
             ...(s.userPermissionOverrides ?? {}),
             [user.id]: buildFullAccessOverrides(),
           },
-        })),
-      addReport: (report) =>
-        set((s) => ({ reports: [...(s.reports ?? []), report] })),
-      deleteReport: (id) =>
+        }));
+        showAddedToast("User");
+      },
+      addReport: (report) => {
+        set((s) => ({ reports: [...(s.reports ?? []), report] }));
+        showAddedToast("Report");
+      },
+      deleteReport: (id) => {
         set((s) => ({
           reports: (s.reports ?? []).filter((report) => report.id !== id),
-        })),
-      addPurchaseOrder: (order) =>
-        set((s) => ({ purchaseOrders: [...(s.purchaseOrders ?? []), order] })),
-      replacePurchaseOrder: (order) =>
+        }));
+        showDeletedToast("Report");
+      },
+      addPurchaseOrder: (order) => {
+        set((s) => ({ purchaseOrders: [...(s.purchaseOrders ?? []), order] }));
+      },
+      replacePurchaseOrder: (order) => {
         set((s) => {
           const list = s.purchaseOrders ?? [];
-          const exists = list.some((o) => o.id === order.id);
+          const hasOrder = list.some((o) => o.id === order.id);
           return {
-            purchaseOrders: exists
+            purchaseOrders: hasOrder
               ? list.map((o) => (o.id === order.id ? order : o))
               : [...list, order],
           };
-        }),
+        });
+      },
       deletePurchaseOrder: (id) =>
         set((s) => ({
           purchaseOrders: (s.purchaseOrders ?? []).filter((o) => o.id !== id),
@@ -253,8 +304,15 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 49,
+      version: 50,
       skipHydration: true,
+      partialize: (state) => ({
+        navOrder: state.navOrder,
+        hiddenNavHrefs: state.hiddenNavHrefs,
+        settings: state.settings,
+        rolePermissions: state.rolePermissions,
+        userPermissionOverrides: state.userPermissionOverrides,
+      }),
       migrate: (persisted, fromVersion) => {
         const state = persisted as AppState & {
           hiddenNavHrefs?: string[];
@@ -263,6 +321,37 @@ export const useAppStore = create<AppState>()(
           rolePermissions?: Record<string, UserRole[]>;
           userPermissionOverrides?: UserPermissionOverrides;
         };
+
+        if (fromVersion >= 50) {
+          return {
+            profiles: [],
+            seriesNames: [],
+            challans: [],
+            stockInward: [],
+            deletedStockInwardIds: [],
+            consumption: [],
+            powderCoating: [],
+            scrap: [],
+            reports: [],
+            purchaseOrders: [],
+            vendors: mockVendors.map(normalizeVendor),
+            users: mockUsers,
+            navOrder: state.navOrder ?? null,
+            hiddenNavHrefs: state.hiddenNavHrefs ?? [],
+            settings: {
+              ...DEFAULT_APP_SETTINGS,
+              ...(state.settings ?? {}),
+            },
+            rolePermissions: {
+              ...DEFAULT_ROLE_PERMISSIONS,
+              ...(state.rolePermissions ?? {}),
+              series:
+                state.rolePermissions?.series ?? DEFAULT_ROLE_PERMISSIONS.series,
+            },
+            userPermissionOverrides: state.userPermissionOverrides ?? {},
+          };
+        }
+
         const { seriesNames: persistedSeriesNames, ...rest } = state;
         const clearedMaster = fromVersion < 46;
         const clearedInventory = fromVersion < 47;
@@ -289,7 +378,7 @@ export const useAppStore = create<AppState>()(
           stripPowderCoatingChallanStatus(enrichChallanVendorDetails(challan, vendors));
         const challans = clearedOperations
           ? []
-          : (rest.challans ?? []).map(normalizeChallan);
+          : filterVisibleChallans((rest.challans ?? []).map(normalizeChallan));
         const powderCoating = clearedOperations
           ? []
           : (rest.powderCoating ?? []).map((entry) => {

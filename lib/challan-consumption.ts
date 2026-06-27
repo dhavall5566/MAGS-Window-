@@ -1,15 +1,21 @@
+import { getOutwardChallanProjectName } from "@/lib/challan-outward";
 import type { Challan, ChallanItem, Consumption } from "@/types";
+
+/** Return challans are hidden from the UI but may still exist in legacy data. */
+export function isHiddenChallanType(type: Challan["type"]): boolean {
+  return type === "return";
+}
+
+export function filterVisibleChallans(challans: Challan[]): Challan[] {
+  return (challans ?? []).filter((challan) => !isHiddenChallanType(challan.type));
+}
 
 export function challanConsumesStock(challan: Challan): boolean {
   return challan.type === "outward" || challan.type === "powder_coating";
 }
 
-export function challanReturnsStock(challan: Challan): boolean {
-  return challan.type === "return";
-}
-
-function itemMultiplier(challan: Challan): number {
-  return challanReturnsStock(challan) ? -1 : 1;
+function itemMultiplier(_challan: Challan): number {
+  return 1;
 }
 
 export function consumptionEntryFromChallanItem(
@@ -22,7 +28,9 @@ export function consumptionEntryFromChallanItem(
     id: `${challan.id}-item-${index}`,
     consumptionNo: `${challan.challanNumber}-${String(index + 1).padStart(2, "0")}`,
     date: challan.date,
-    projectName: challan.vendorName,
+    projectName: isOutwardChallan(challan)
+      ? getOutwardChallanProjectName(challan) || challan.vendorName
+      : challan.vendorName,
     profileCode: item.profileCode,
     profileName: item.profileName,
     length: item.length,
@@ -43,6 +51,67 @@ export function consumptionEntriesFromChallan(challan: Challan): Consumption[] {
 
 export function consumptionEntriesFromChallans(challans: Challan[]): Consumption[] {
   return challans.flatMap(consumptionEntriesFromChallan);
+}
+
+export function isOutwardChallan(challan: Challan): boolean {
+  return challan.type === "outward";
+}
+
+export function isStockAffectingChallan(challan: Challan): boolean {
+  return challan.type === "outward" || challan.type === "powder_coating";
+}
+
+export function consumptionEntriesFromOutwardChallans(challans: Challan[]): Consumption[] {
+  return challans.filter(isOutwardChallan).flatMap(consumptionEntriesFromChallan);
+}
+
+export function consumptionEntriesFromStockChallans(challans: Challan[]): Consumption[] {
+  return challans.filter(isStockAffectingChallan).flatMap(consumptionEntriesFromChallan);
+}
+
+export function mergeChallans(api: Challan[], store: Challan[]): Challan[] {
+  const byId = new Map<string, Challan>();
+
+  for (const entry of api) {
+    if (!entry?.id) continue;
+    byId.set(entry.id, { ...entry });
+  }
+
+  store.forEach((entry) => {
+    if (!entry?.id) return;
+    const existing = byId.get(entry.id);
+    byId.set(entry.id, existing ? { ...existing, ...entry } : { ...entry });
+  });
+
+  const seenNumbers = new Set<string>();
+  const merged: Challan[] = [];
+
+  for (const challan of filterVisibleChallans(Array.from(byId.values()))) {
+    const numberKey = `${challan.type}::${(challan.challanNumber ?? "").trim().toLowerCase()}`;
+    if (numberKey.endsWith("::")) {
+      merged.push(challan);
+      continue;
+    }
+    if (seenNumbers.has(numberKey)) continue;
+    seenNumbers.add(numberKey);
+    merged.push(challan);
+  }
+
+  return merged;
+}
+
+export function buildOutwardConsumptionFromChallans(
+  apiChallans: Challan[],
+  storeChallans: Challan[]
+): Consumption[] {
+  return consumptionEntriesFromOutwardChallans(mergeChallans(apiChallans, storeChallans));
+}
+
+export function buildStockConsumptionFromChallans(
+  apiChallans: Challan[],
+  storeChallans: Challan[]
+): Consumption[] {
+  return consumptionEntriesFromStockChallans(mergeChallans(apiChallans, storeChallans));
 }
 
 /** Manual consumption entries only — excludes challan-derived rows. */

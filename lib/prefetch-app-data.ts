@@ -1,6 +1,7 @@
 import { prefetchJson } from "@/lib/fetch-json";
 
 export const APP_API_PATHS = [
+  "/api/series",
   "/api/profiles",
   "/api/challans",
   "/api/purchase-orders",
@@ -8,8 +9,6 @@ export const APP_API_PATHS = [
   "/api/stock",
   "/api/consumption",
   "/api/powder-coating",
-  "/api/scrap",
-  "/api/dashboard",
   "/api/reports",
   "/api/users",
 ] as const;

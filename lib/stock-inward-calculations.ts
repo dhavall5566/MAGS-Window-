@@ -1,18 +1,31 @@
-import { findProfileByCode, getProfileCodeValue, getProfileDyeCode } from "@/lib/profile";
+import {
+  findProfileByCode,
+  getProfileCodeValue,
+  getProfileDesignImage,
+  getProfileDyeCode,
+  getProfileWeightPerMeter,
+  computeLineWeightKg,
+} from "@/lib/profile";
+import { formatNumber } from "@/lib/utils";
 import type { Profile, StockInward } from "@/types";
 
-/** Fixed kg/m for stock inward until profile-specific values are enabled. */
+/** Fallback kg/m when profile weight is unavailable. */
 export const STOCK_INWARD_KG_PER_METER = 2.5;
+
+/** Display precision for profile length in meters across stock screens. */
+export const STOCK_LENGTH_DECIMALS = 2;
+
+export function formatStockLength(lengthInMeter: number | undefined | null): string {
+  return formatNumber(lengthInMeter ?? 0, STOCK_LENGTH_DECIMALS);
+}
 
 export const NOS_LABEL = "NOS";
 
 export const NOS_FORMULA =
-  "NOS = Total Weight (kg) ÷ (Length (m) × Kg per meter). Enter either value and the other updates automatically.";
+  "Total Weight (kg) = Length (m) × NOS × KG/MTR. Enter any two values and the third updates automatically.";
 
 /** @deprecated Use NOS_FORMULA */
 export const TOTAL_PROFILES_FORMULA = NOS_FORMULA;
-
-export const FEET_TO_METER = 0.3048;
 
 /** Explicit dye code → profile code map. Add entries here as more codes are defined. */
 export const STOCK_INWARD_DYE_CODE_TO_PROFILE: Record<string, string> = {
@@ -52,59 +65,45 @@ export function findProfileByDyeCode(
   return findProfilesByDyeCode(profiles, dyeCode)[0];
 }
 
-export function feetToMeters(feet: number): number {
-  if (!Number.isFinite(feet) || feet <= 0) return 0;
-  return Math.round(feet * FEET_TO_METER * 10000) / 10000;
-}
-
-export function metersToFeet(meters: number): number {
-  if (!Number.isFinite(meters) || meters <= 0) return 0;
-  return Math.round((meters / FEET_TO_METER) * 10000) / 10000;
-}
-
-export function getStockInwardKgPerMeter(_profile?: Profile | null): number {
-  return STOCK_INWARD_KG_PER_METER;
-}
-
-export function getStockInwardRate(profile?: Profile | null): number {
+export function getStockInwardKgPerMeter(profile?: Profile | null): number {
   if (!profile) return 0;
-  return profile.rate ?? profile.perKgRate ?? 0;
+  const value = getProfileWeightPerMeter(profile);
+  return value > 0 ? value : STOCK_INWARD_KG_PER_METER;
 }
 
+/** Weight per profile (kg) = length (m) × KG/MTR. */
 export function calculatePerProfileWeightKg(
   lengthInMeter: number,
   kgPerMeter: number
 ): number {
-  if (!lengthInMeter || !kgPerMeter) return 0;
-  return Math.round(lengthInMeter * kgPerMeter * 100) / 100;
+  return computeLineWeightKg(kgPerMeter, lengthInMeter, 1, "M");
 }
 
+/** NOS = total weight (kg) ÷ (length (m) × KG/MTR). */
 export function calculateTotalProfiles(
   totalWeightKg: number,
   lengthInMeter: number,
   kgPerMeter: number
 ): number {
-  const perProfileWeight = calculatePerProfileWeightKg(lengthInMeter, kgPerMeter);
-  if (!totalWeightKg || !perProfileWeight) return 0;
-  return Math.round((totalWeightKg / perProfileWeight) * 100) / 100;
+  const perUnitWeight = calculatePerProfileWeightKg(lengthInMeter, kgPerMeter);
+  if (!totalWeightKg || !perUnitWeight) return 0;
+  return Math.round((totalWeightKg / perUnitWeight) * 100) / 100;
 }
 
+/** Total weight (kg) = length (m) × NOS × KG/MTR. */
 export function calculateTotalWeightKg(
   totalProfiles: number,
   lengthInMeter: number,
   kgPerMeter: number
 ): number {
-  const perProfileWeight = calculatePerProfileWeightKg(lengthInMeter, kgPerMeter);
-  if (!totalProfiles || !perProfileWeight) return 0;
-  return Math.round(totalProfiles * perProfileWeight * 100) / 100;
+  return computeLineWeightKg(kgPerMeter, lengthInMeter, totalProfiles, "M");
 }
 
 export function syncStockInwardFromWeight(
   totalWeightKg: number,
   lengthInMeter: number,
-  profile?: Profile | null
+  kgPerMeter: number
 ): { totalWeightKg: number; totalProfiles: number } {
-  const kgPerMeter = getStockInwardKgPerMeter(profile);
   return {
     totalWeightKg,
     totalProfiles: calculateTotalProfiles(totalWeightKg, lengthInMeter, kgPerMeter),
@@ -114,9 +113,8 @@ export function syncStockInwardFromWeight(
 export function syncStockInwardFromProfiles(
   totalProfiles: number,
   lengthInMeter: number,
-  profile?: Profile | null
+  kgPerMeter: number
 ): { totalWeightKg: number; totalProfiles: number } {
-  const kgPerMeter = getStockInwardKgPerMeter(profile);
   return {
     totalProfiles,
     totalWeightKg: calculateTotalWeightKg(totalProfiles, lengthInMeter, kgPerMeter),
@@ -127,13 +125,13 @@ export function syncStockInwardAfterLengthChange(
   lengthInMeter: number,
   totalWeightKg: number,
   totalProfiles: number,
-  profile?: Profile | null
+  kgPerMeter: number
 ): { totalWeightKg: number; totalProfiles: number } {
   if (totalWeightKg > 0) {
-    return syncStockInwardFromWeight(totalWeightKg, lengthInMeter, profile);
+    return syncStockInwardFromWeight(totalWeightKg, lengthInMeter, kgPerMeter);
   }
   if (totalProfiles > 0) {
-    return syncStockInwardFromProfiles(totalProfiles, lengthInMeter, profile);
+    return syncStockInwardFromProfiles(totalProfiles, lengthInMeter, kgPerMeter);
   }
   return { totalWeightKg: 0, totalProfiles: 0 };
 }
@@ -144,14 +142,11 @@ export function buildStockInwardMetrics(
   lengthInMeter: number
 ) {
   const kgPerMeter = getStockInwardKgPerMeter(profile);
-  const rate = getStockInwardRate(profile);
   const totalProfiles = calculateTotalProfiles(totalWeightKg, lengthInMeter, kgPerMeter);
 
   return {
     lengthInMeter,
-    lengthFeet: metersToFeet(lengthInMeter),
     kgPerMeter,
-    rate,
     totalProfiles,
     perProfileWeightKg: calculatePerProfileWeightKg(lengthInMeter, kgPerMeter),
   };
@@ -171,25 +166,36 @@ export function resolveStockInwardProfile(
 
 export function normalizeStockInwardRecord(entry: StockInward): StockInward {
   const totalWeightKg = entry.totalWeightKg ?? entry.weight ?? 0;
-  const lengthFeet =
-    entry.lengthFeet ?? (entry.length ? metersToFeet(entry.length) : 0);
-  const lengthInMeter = entry.length ?? feetToMeters(lengthFeet);
+  const lengthInMeter = Number(entry.length) || 0;
   const kgPerMeter = entry.kgPerMeter ?? STOCK_INWARD_KG_PER_METER;
-  const rate = entry.rate ?? 0;
   const quantity =
     entry.quantity ??
     calculateTotalProfiles(totalWeightKg, lengthInMeter, kgPerMeter);
 
-  return {
+  const normalized: StockInward = {
     ...entry,
     dyeCode: entry.dyeCode?.trim() ?? "",
     invoiceNo: entry.invoiceNo?.trim() || undefined,
+    profileImage: entry.profileImage?.trim() || undefined,
     totalWeightKg,
-    lengthFeet,
     length: lengthInMeter,
     kgPerMeter,
-    rate,
     quantity,
     weight: totalWeightKg,
   };
+
+  delete (normalized as { lengthFeet?: number }).lengthFeet;
+  delete (normalized as { rate?: number }).rate;
+
+  return normalized;
+}
+
+export function getStockInwardProfileImage(
+  entry: Pick<StockInward, "profileImage" | "profileCode">,
+  profile?: Profile | null
+): string {
+  const direct = entry.profileImage?.trim();
+  if (direct) return direct;
+  if (profile) return getProfileDesignImage(profile);
+  return "";
 }
