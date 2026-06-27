@@ -20,6 +20,21 @@ export function resolveVendorType(
   return "delivery";
 }
 
+/** Only the MAGS OC issuer keeps outward_challan; all other parties are delivery customers. */
+export function normalizeVendorType(
+  vendor: Pick<Vendor, "id" | "partyName" | "vendorType">
+): VendorType {
+  const resolved = resolveVendorType(vendor);
+  if (
+    resolved === "outward_challan" &&
+    vendor.id !== MAGS_OUTWARD_CHALLAN_VENDOR_ID &&
+    !isMagsOutwardChallanIssuer(vendor)
+  ) {
+    return "delivery";
+  }
+  return resolved;
+}
+
 export function getVendorTypeLabel(vendorType: VendorType): string {
   return VENDOR_TYPE_OPTIONS.find((option) => option.value === vendorType)?.label ?? vendorType;
 }
@@ -102,6 +117,6 @@ export function normalizeVendor(vendor: Vendor): Vendor {
     phoneNo: vendor.phoneNo ?? "",
     email: vendor.email?.trim() ?? "",
     gstNo: vendor.gstNo?.trim() ?? "",
-    vendorType: resolveVendorType(vendor),
+    vendorType: normalizeVendorType(vendor),
   };
 }
