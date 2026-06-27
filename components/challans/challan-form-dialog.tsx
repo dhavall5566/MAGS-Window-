@@ -50,6 +50,16 @@ import {
   sumChallanItemWeights,
   resolveChallanItemWeight,
 } from "@/lib/challan-outward";
+import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
+import {
+  formatSplitLengthOption,
+  getOutwardChallanSplitLengthOptions,
+  resolveOutwardChallanItemLength,
+} from "@/lib/outward-challan-stock-lengths";
+import {
+  normalizeStockInwardRecord,
+} from "@/lib/stock-inward-calculations";
+import { mergeStockInward, normalizeStockLength } from "@/lib/stock-master";
 import {
   findOutwardChallanIssuerById,
   getDefaultOutwardChallanVendorId,
@@ -238,6 +248,8 @@ export function ChallanFormDialog({
   const defaultChallanLength = useAppStore((s) => s.settings.defaultChallanLength);
   const powderCoatingEntries = useAppStore((s) => s.powderCoating);
   const allChallans = useAppStore((s) => s.challans);
+  const storeInward = useAppStore((s) => s.stockInward);
+  const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
 
   const isPowderCoating = type === "powder_coating";
   const schema = isPowderCoating ? coatingSchema : outwardSchema;
@@ -310,6 +322,24 @@ export function ChallanFormDialog({
     () => getOutwardChallans(allChallans ?? []),
     [allChallans]
   );
+
+  const mergedInward = useMemo(
+    () =>
+      mergeStockInward(
+        [],
+        (storeInward ?? []).map(normalizeStockInwardRecord),
+        deletedStockInwardIds ?? []
+      ),
+    [storeInward, deletedStockInwardIds]
+  );
+
+  const stockConsumption = useMemo(() => {
+    const consumption = buildOutwardConsumptionFromChallans([], allChallans ?? []);
+    if (isEdit && challanToEdit?.id) {
+      return consumption.filter((entry) => entry.challanId !== challanToEdit.id);
+    }
+    return consumption;
+  }, [allChallans, isEdit, challanToEdit?.id]);
 
   const outwardChallanIssuerVendors = useMemo(
     () => getOutwardChallanIssuerVendors(vendors),
@@ -523,13 +553,24 @@ export function ChallanFormDialog({
   const onProfileSelect = (index: number, code: string) => {
     const profile = findProfileByCode(profiles, code);
     if (!profile) return;
-    form.setValue(`items.${index}.profileCode`, getProfileCodeValue(profile));
-    form.setValue(`items.${index}.profileName`, getProfileDisplayName(profile));
+    const profileCode = getProfileCodeValue(profile);
+    const profileName = getProfileDisplayName(profile);
+    form.setValue(`items.${index}.profileCode`, profileCode);
+    form.setValue(`items.${index}.profileName`, profileName);
     form.setValue(`items.${index}.profileImage`, getProfileDesignImage(profile));
-    const length =
+    const fallbackLength =
       getPrimaryProfileLength(profile) ||
       profile.standardLength ||
       defaultChallanLength;
+    const length = isPowderCoating
+      ? fallbackLength
+      : resolveOutwardChallanItemLength(
+          profileCode,
+          profileName,
+          mergedInward,
+          stockConsumption,
+          fallbackLength
+        );
     form.setValue(`items.${index}.length`, length);
     if (isPowderCoating) {
       form.setValue(
@@ -926,9 +967,26 @@ export function ChallanFormDialog({
             </div>
             {fields.map((field, index) => {
               const itemProfileCode = form.watch(`items.${index}.profileCode`);
+              const itemProfileName = form.watch(`items.${index}.profileName`);
               const itemProfile = findProfileByCode(profiles, itemProfileCode);
               const itemLength = form.watch(`items.${index}.length`);
               const itemQty = form.watch(`items.${index}.qty`);
+              const splitLengthOptions =
+                type === "outward" && itemProfileCode
+                  ? getOutwardChallanSplitLengthOptions(
+                      itemProfileCode,
+                      itemProfileName,
+                      mergedInward,
+                      stockConsumption,
+                      Number(itemLength) || 0,
+                      (watchedItems ?? [])
+                        .filter((_, rowIndex) => rowIndex !== index)
+                        .filter((item) => item.profileCode === itemProfileCode)
+                        .map((item) => Number(item.length) || 0)
+                    )
+                  : [];
+              const useSplitLengthDropdown = splitLengthOptions.length > 0;
+              const normalizedItemLength = normalizeStockLength(Number(itemLength) || 0);
               const itemWeight = itemProfile
                 ? resolveChallanItemWeight(
                     {
@@ -981,15 +1039,37 @@ export function ChallanFormDialog({
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
                   <Label className="text-xs">Length (m)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-full min-w-0 tabular-nums"
-                    {...form.register(`items.${index}.length`, {
-                      onChange: () => updateItemWeight(index),
-                    })}
-                  />
+                  {useSplitLengthDropdown ? (
+                    <SearchableSelect
+                      className="w-full"
+                      searchable={false}
+                      value={
+                        normalizedItemLength > 0 ? String(normalizedItemLength) : ""
+                      }
+                      onValueChange={(value) => {
+                        form.setValue(`items.${index}.length`, Number(value) || 0, {
+                          shouldValidate: true,
+                        });
+                        updateItemWeight(index);
+                      }}
+                      options={splitLengthOptions.map((length) => ({
+                        value: String(length),
+                        label: formatSplitLengthOption(length),
+                      }))}
+                      placeholder="Select length"
+                      emptyText="No split stock remaining"
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-full min-w-0 tabular-nums"
+                      {...form.register(`items.${index}.length`, {
+                        onChange: () => updateItemWeight(index),
+                      })}
+                    />
+                  )}
                 </div>
                 {!isPowderCoating && (
                   <div className="min-w-0 flex-1 space-y-1">

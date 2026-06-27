@@ -15,7 +15,6 @@ import {
   type StockInwardAddFormData,
 } from "@/lib/stock-inward-form";
 import { generateId } from "@/lib/utils";
-import { showSavedToast } from "@/lib/toast";
 import type { Profile, StockInward } from "@/types";
 
 interface EditStockInwardDialogProps {
@@ -24,7 +23,7 @@ interface EditStockInwardDialogProps {
   existingInward: StockInward[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (entries: StockInward[]) => void;
+  onSave: (entries: StockInward[]) => Promise<void>;
 }
 
 const emptyFormValues: StockInwardAddFormData = {
@@ -68,7 +67,7 @@ export function EditStockInwardDialog({
     }
   }, [open, entry, reset, profiles]);
 
-  const onSubmit = (data: StockInwardAddFormData) => {
+  const onSubmit = async (data: StockInwardAddFormData) => {
     if (!entry) return;
 
     const entries = buildStockInwardEntriesFromEditForm(
@@ -80,8 +79,7 @@ export function EditStockInwardDialog({
     );
     if (entries.length === 0) return;
 
-    showSavedToast("Stock inward");
-    onSave(entries);
+    await onSave(entries);
     onOpenChange(false);
   };
 

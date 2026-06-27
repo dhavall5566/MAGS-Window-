@@ -6,6 +6,7 @@ import {
   resolveStockInwardProfile,
 } from "@/lib/stock-inward-calculations";
 import { getProfileDesignImage } from "@/lib/profile";
+import { normalizeStockLength } from "@/lib/stock-master";
 import type { Profile, StockInward } from "@/types";
 
 export const STOCK_INWARD_SUPPLIERS = [
@@ -121,14 +122,16 @@ export const stockInwardAddFormSchema = z
 
       const seenLengths = new Set<number>();
       profileRow.lengthRows.forEach((row, lengthIndex) => {
-        if (seenLengths.has(row.lengthInMeter)) {
+        const length = normalizeStockLength(row.lengthInMeter);
+        if (!length) return;
+        if (seenLengths.has(length)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Each length can only be added once",
             path: ["profileRows", profileIndex, "lengthRows", lengthIndex, "lengthInMeter"],
           });
         }
-        seenLengths.add(row.lengthInMeter);
+        seenLengths.add(length);
       });
     });
   });
@@ -236,7 +239,8 @@ export function buildStockInwardEntriesFromAddForm(
     const inwardNos = generateInwardNos([...existingInward, ...entries], profileRow.lengthRows.length);
 
     profileRow.lengthRows.forEach((row, index) => {
-      const metrics = buildStockInwardMetrics(profile, row.totalWeightKg, row.lengthInMeter);
+      const length = normalizeStockLength(row.lengthInMeter);
+      const metrics = buildStockInwardMetrics(profile, row.totalWeightKg, length);
       entries.push({
         id: createId(),
         inwardNo: inwardNos[index],
@@ -248,7 +252,7 @@ export function buildStockInwardEntriesFromAddForm(
         profileName: profile.name,
         profileImage,
         totalWeightKg: row.totalWeightKg,
-        length: row.lengthInMeter,
+        length,
         kgPerMeter: row.kgPerMeter || kgPerMeter,
         quantity: metrics.totalProfiles,
         weight: row.totalWeightKg,
@@ -278,7 +282,8 @@ export function buildStockInwardEntriesFromEditForm(
     const profileImage = profileRow.profileImage?.trim() || getProfileDesignImage(profile);
 
     profileRow.lengthRows.forEach((row) => {
-      const metrics = buildStockInwardMetrics(profile, row.totalWeightKg, row.lengthInMeter);
+      const length = normalizeStockLength(row.lengthInMeter);
+      const metrics = buildStockInwardMetrics(profile, row.totalWeightKg, length);
       const isFirst = entries.length === 0;
       const inwardNo = isFirst
         ? baseEntry.inwardNo
@@ -295,7 +300,7 @@ export function buildStockInwardEntriesFromEditForm(
         profileName: profile.name,
         profileImage,
         totalWeightKg: row.totalWeightKg,
-        length: row.lengthInMeter,
+        length,
         kgPerMeter: row.kgPerMeter || kgPerMeter,
         quantity: metrics.totalProfiles,
         weight: row.totalWeightKg,

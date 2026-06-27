@@ -49,6 +49,7 @@ interface AppState {
   deleteChallan: (id: string) => void;
   addStockInward: (entry: StockInward) => void;
   upsertStockInward: (entry: StockInward) => void;
+  revertStockInwardAdds: (ids: string[]) => void;
   deleteStockInward: (id: string) => void;
   addConsumption: (entry: Consumption) => void;
   addPowderCoating: (entry: PowderCoating) => void;
@@ -200,6 +201,13 @@ export const useAppStore = create<AppState>()(
               : [...list, entry],
           };
         });
+      },
+      revertStockInwardAdds: (ids) => {
+        if (ids.length === 0) return;
+        const idSet = new Set(ids);
+        set((s) => ({
+          stockInward: (s.stockInward ?? []).filter((entry) => !idSet.has(entry.id)),
+        }));
       },
       deleteStockInward: (id) => {
         set((s) => ({

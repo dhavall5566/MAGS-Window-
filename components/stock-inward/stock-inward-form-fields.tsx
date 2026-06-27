@@ -275,7 +275,12 @@ function ProfileLengthRows({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <Label>Lengths</Label>
+        <div className="space-y-1">
+          <Label>Lengths</Label>
+          <p className="text-xs text-muted-foreground">
+            Add multiple lengths for the same profile — each length saves as a separate stock inward entry.
+          </p>
+        </div>
         <Button
           type="button"
           variant="outline"

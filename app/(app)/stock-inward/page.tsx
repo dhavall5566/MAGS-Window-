@@ -17,13 +17,15 @@ import {
 import {
   createStockInwardApi,
   deleteStockInwardApi,
+  fetchStockInwardEntries,
+  saveStockInwardEntriesApi,
   splitStockInwardApi,
   updateStockInwardApi,
 } from "@/lib/stock-inward-api";
 import { mergeStockInward } from "@/lib/stock-master";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
-import { showDeletedToast } from "@/lib/toast";
+import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
 import { useAppStore } from "@/lib/store";
 import type { Profile, StockInward } from "@/types";
 
@@ -61,6 +63,7 @@ export default function StockInwardPage() {
   const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
   const addStockInward = useAppStore((s) => s.addStockInward);
   const upsertStockInward = useAppStore((s) => s.upsertStockInward);
+  const revertStockInwardAdds = useAppStore((s) => s.revertStockInwardAdds);
   const deleteStockInward = useAppStore((s) => s.deleteStockInward);
   const storeProfiles = useAppStore((s) => s.profiles);
   const [apiInward, setApiInward] = useCachedOrStoreList(
@@ -113,25 +116,31 @@ export default function StockInwardPage() {
 
   const handleAddStock = useCallback(
     async (entries: StockInward[]) => {
-      entries.forEach((entry) => addStockInward(normalizeStockInwardRecord(entry)));
+      const normalized = entries.map(normalizeStockInwardRecord);
+      const entryIds = normalized.map((entry) => entry.id);
 
-      const results = await Promise.all(
-        entries.map(async (entry) => ({
-          entry,
-          saved: await createStockInwardApi(entry),
-        }))
-      );
+      normalized.forEach((entry) => addStockInward(entry));
 
-      for (const { entry, saved } of results) {
-        if (!saved) {
-          deleteStockInward(entry.id);
-          alert("Could not save stock inward. Please check that the backend is running.");
-          return;
-        }
-        upsertStockInward(saved);
+      const saved = await saveStockInwardEntriesApi(normalized);
+      if (!saved) {
+        revertStockInwardAdds(entryIds);
+        alert("Could not save stock inward. Please check that the backend is running.");
+        throw new Error("stock inward save failed");
       }
+
+      saved.forEach((entry) => upsertStockInward(entry));
+
+      const freshRows = await fetchStockInwardEntries(
+        useAppStore.getState().stockInward ?? [],
+        useAppStore.getState().deletedStockInwardIds ?? []
+      );
+      setApiInward(freshRows);
+
+      showAddedToast(
+        saved.length > 1 ? `${saved.length} stock inward entries` : "Stock inward"
+      );
     },
-    [addStockInward, upsertStockInward, deleteStockInward]
+    [addStockInward, upsertStockInward, revertStockInwardAdds, setApiInward]
   );
 
   const handleSplit = useCallback(
@@ -184,30 +193,44 @@ export default function StockInwardPage() {
     async (entries: StockInward[]) => {
       if (entries.length === 0) return;
 
-      for (let index = 0; index < entries.length; index += 1) {
-        const entry = normalizeStockInwardRecord(entries[index]);
-        upsertStockInward(entry);
+      const normalized = entries.map(normalizeStockInwardRecord);
+      const [baseEntry, ...additionalEntries] = normalized;
+      const additionalIds = additionalEntries.map((entry) => entry.id);
 
-        const saved =
-          index === 0
-            ? await updateStockInwardApi(entry)
-            : await createStockInwardApi(entry);
+      normalized.forEach((entry) => upsertStockInward(entry));
 
-        if (!saved) {
+      const savedBase = await updateStockInwardApi(baseEntry);
+      if (!savedBase) {
+        alert("Could not update stock inward. Please check that the backend is running.");
+        throw new Error("stock inward update failed");
+      }
+      upsertStockInward(savedBase);
+
+      if (additionalEntries.length > 0) {
+        const savedAdditional = await saveStockInwardEntriesApi(additionalEntries);
+        if (!savedAdditional) {
+          revertStockInwardAdds(additionalIds);
           alert(
-            index === 0
-              ? "Could not update stock inward. Please check that the backend is running."
-              : "Could not save additional stock inward entries. Please check that the backend is running."
+            "Could not save additional stock inward entries. Please check that the backend is running."
           );
-          return;
+          throw new Error("stock inward additional save failed");
         }
-        upsertStockInward(saved);
+        savedAdditional.forEach((entry) => upsertStockInward(entry));
       }
 
+      const freshRows = await fetchStockInwardEntries(
+        useAppStore.getState().stockInward ?? [],
+        useAppStore.getState().deletedStockInwardIds ?? []
+      );
+      setApiInward(freshRows);
+
+      showSavedToast(
+        normalized.length > 1 ? `${normalized.length} stock inward entries` : "Stock inward"
+      );
       setEditOpen(false);
       setEditingEntry(null);
     },
-    [upsertStockInward]
+    [upsertStockInward, revertStockInwardAdds, setApiInward]
   );
 
   const handleDelete = useCallback(
