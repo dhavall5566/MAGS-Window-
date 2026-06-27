@@ -164,9 +164,9 @@ function ChallanDetail({
         <div>
           <span className="text-muted-foreground">Vendor:</span> {challan.vendorName}
         </div>
-        {isOutward && challan.outwardChallanVendorName && (
+        {challan.type === "powder_coating" && challan.outwardChallanVendorName && (
           <div>
-            <span className="text-muted-foreground">Outward Challan Vendor:</span>{" "}
+            <span className="text-muted-foreground">Powder Coating:</span>{" "}
             {challan.outwardChallanVendorName}
           </div>
         )}
@@ -229,12 +229,6 @@ function ChallanDetail({
             <div>
               <span className="text-muted-foreground">Color:</span> {challan.color}
             </div>
-            {challan.coatingRate != null && challan.coatingRate > 0 && (
-              <div>
-                <span className="text-muted-foreground">Rate:</span>{" "}
-                {formatNumber(challan.coatingRate, 4)}
-              </div>
-            )}
           </>
         )}
       </div>
@@ -294,27 +288,47 @@ export default function ChallansPage() {
     [apiChallans, storeChallans]
   );
 
-  const handleCreate = async (challan: Challan) => {
-    const saved = await createChallanApi(challan);
-    const record = saved ?? challan;
-    replaceChallan(record);
+  const handleCreate = (challan: Challan) => {
+    replaceChallan(challan);
     setApiChallans((rows) => {
-      const exists = rows.some((row) => row.id === record.id);
+      const exists = rows.some((row) => row.id === challan.id);
       return exists
-        ? rows.map((row) => (row.id === record.id ? record : row))
-        : [...rows, record];
+        ? rows.map((row) => (row.id === challan.id ? challan : row))
+        : [...rows, challan];
+    });
+
+    void createChallanApi(challan).then((saved) => {
+      if (!saved) return;
+      useAppStore.setState((state) => ({
+        challans: (state.challans ?? []).map((row) =>
+          row.id === saved.id ? saved : row
+        ),
+      }));
+      setApiChallans((rows) =>
+        rows.map((row) => (row.id === saved.id ? saved : row))
+      );
     });
   };
 
-  const handleUpdate = async (challan: Challan) => {
+  const handleUpdate = (challan: Challan) => {
     replaceChallan(challan);
+    setApiChallans((rows) =>
+      rows.map((row) => (row.id === challan.id ? challan : row))
+    );
     setEditOpen(false);
     setEditingChallan(null);
-    const saved = await updateChallanApi(challan);
-    if (saved) {
-      replaceChallan(saved);
-      setApiChallans((rows) => rows.map((row) => (row.id === saved.id ? saved : row)));
-    }
+
+    void updateChallanApi(challan).then((saved) => {
+      if (!saved) return;
+      useAppStore.setState((state) => ({
+        challans: (state.challans ?? []).map((row) =>
+          row.id === saved.id ? saved : row
+        ),
+      }));
+      setApiChallans((rows) =>
+        rows.map((row) => (row.id === saved.id ? saved : row))
+      );
+    });
   };
 
   const handleDelete = useCallback(async (challan: Challan) => {

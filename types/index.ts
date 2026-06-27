@@ -214,8 +214,6 @@ export interface OutwardChallan extends ChallanVendorDetails {
   /** Sum of all line item profile weights (kg). */
   totalWeightAllProfiles?: number;
   totalNoOfProfiles?: number;
-  outwardChallanVendorId?: string;
-  outwardChallanVendorName?: string;
   /** @deprecated Legacy outward field — migrated to projectName. */
   remarks?: string;
   items: ChallanItem[];
@@ -229,6 +227,9 @@ export interface PowderCoatingChallan extends ChallanVendorDetails {
   vehicleNumber: string;
   driverName: string;
   projectName?: string;
+  /** Issuer branding for powder coating challan PDF header. */
+  outwardChallanVendorId?: string;
+  outwardChallanVendorName?: string;
   /** @deprecated Legacy powder coating field — migrated to projectName. */
   remarks?: string;
   items: ChallanItem[];

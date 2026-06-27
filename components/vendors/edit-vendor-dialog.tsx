@@ -22,7 +22,7 @@ interface EditVendorDialogProps {
     id: string,
     updates: Pick<
       Vendor,
-      "partyName" | "partyAddress" | "personName" | "phoneNo" | "email" | "vendorType"
+      "partyName" | "partyAddress" | "personName" | "phoneNo" | "email" | "gstNo" | "vendorType"
     >
   ) => void;
 }
@@ -50,6 +50,7 @@ export function EditVendorDialog({
       personName: "",
       phoneNo: "",
       email: "",
+      gstNo: "",
       vendorType: "delivery",
     },
   });
@@ -63,6 +64,7 @@ export function EditVendorDialog({
           personName: vendor.personName,
           phoneNo: vendor.phoneNo,
           email: vendor.email,
+          gstNo: vendor.gstNo ?? "",
           vendorType: vendor.vendorType,
         },
         { keepIsSubmitted: false }
@@ -78,6 +80,7 @@ export function EditVendorDialog({
       personName: data.personName?.trim() ?? "",
       phoneNo: data.phoneNo?.trim() ?? "",
       email: data.email?.trim() ?? "",
+      gstNo: data.gstNo?.trim() ?? "",
       vendorType: data.vendorType,
     });
     onOpenChange(false);
@@ -133,6 +136,14 @@ export function EditVendorDialog({
                 rows={3}
                 aria-invalid={fieldInvalid(isSubmitted, errors.partyAddress)}
                 {...register("partyAddress")}
+              />
+            </FormField>
+            <FormField label="GST No." htmlFor="edit-gstNo" optional>
+              <Input
+                id="edit-gstNo"
+                placeholder="e.g. 24AABCU9603R1ZM"
+                className="uppercase"
+                {...register("gstNo")}
               />
             </FormField>
           </FormSection>

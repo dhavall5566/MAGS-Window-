@@ -53,6 +53,7 @@ interface SearchableSelectProps {
   side?: "top" | "bottom" | "left" | "right";
   "aria-invalid"?: boolean | "true" | "false";
   triggerPrefix?: React.ReactNode;
+  footer?: React.ReactNode | ((helpers: { close: () => void }) => React.ReactNode);
 }
 
 export function SearchableSelect({
@@ -71,6 +72,7 @@ export function SearchableSelect({
   side = "bottom",
   "aria-invalid": ariaInvalid,
   triggerPrefix,
+  footer,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -326,6 +328,11 @@ export function SearchableSelect({
             })
           )}
         </div>
+        {footer ? (
+          <div className="mt-1.5 border-t border-border/80 pt-1.5">
+            {typeof footer === "function" ? footer({ close: () => handleOpenChange(false) }) : footer}
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

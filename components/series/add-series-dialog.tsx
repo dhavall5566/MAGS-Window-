@@ -16,10 +16,20 @@ import type { SeriesName } from "@/types";
 
 interface AddSeriesDialogProps {
   onSave: (series: SeriesName) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
 }
 
-export function AddSeriesDialog({ onSave }: AddSeriesDialogProps) {
-  const [open, setOpen] = useState(false);
+export function AddSeriesDialog({
+  onSave,
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
+}: AddSeriesDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const {
     register,
     handleSubmit,
@@ -35,7 +45,7 @@ export function AddSeriesDialog({ onSave }: AddSeriesDialogProps) {
 
   const closeDialog = () => {
     setOpen(false);
-    reset();
+    reset({ name: "", seriesNo: "" });
   };
 
   const onSubmit = (data: SeriesFormData) => {
@@ -57,10 +67,12 @@ export function AddSeriesDialog({ onSave }: AddSeriesDialogProps) {
       title="Add New Series"
       description="Define a series code used when creating profiles (e.g. MS + 150 → MS150)."
       trigger={
-        <Button>
-          <Plus className="h-4 w-4" />
-          Add Series
-        </Button>
+        showTrigger ? (
+          <Button>
+            <Plus className="h-4 w-4" />
+            Add Series
+          </Button>
+        ) : undefined
       }
       onSubmit={handleSubmit(onSubmit)}
       footer={

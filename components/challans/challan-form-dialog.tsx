@@ -22,15 +22,20 @@ import {
 } from "@/components/ui/tooltip";
 import {
   findProfileByCode,
+  buildProfileByCodeMap,
+  findProfileInMap,
+  getProfileCodeValue,
   getPrimaryProfileLength,
   getProfileDesignImage,
   getProfileDisplayName,
   getProfileSelectOptions,
   getProfilesForPowderCoatingChallan,
   getPowderCoatingChallanRate,
-  calculatePowderCoatingRmmFromLength,
+  getProfilePowderCoatingRmmValue,
+  resolvePowderCoatingInputRate,
+  calculatePowderCoatingItemAmountFromValues,
+  formatCurrency,
   POWDER_COATING_RMTR_RATE_LABEL,
-  POWDER_COATING_RATE_FIELD_LABEL,
   POWDER_COATING_RMM_FORMULA,
   POWDER_COATING_RATE_FORMULA,
   weightFromConversionUnit,
@@ -83,7 +88,6 @@ const commonChallanSchema = z.object({
 });
 
 const outwardSchema = commonChallanSchema.extend({
-  outwardChallanVendorId: z.string().min(1, "Outward challan vendor is required"),
   vehicleNumber: z.string().trim().min(1, "Vehicle number is required"),
   driverName: z.string().trim().min(1, "Driver name is required"),
   projectName: z.string().optional(),
@@ -92,11 +96,11 @@ const outwardSchema = commonChallanSchema.extend({
 });
 
 const coatingSchema = commonChallanSchema.extend({
+  outwardChallanVendorId: z.string().min(1, "Outward challan vendor is required"),
   vehicleNumber: z.string().optional(),
   driverName: z.string().optional(),
   projectName: z.string().optional(),
   color: z.string().trim().min(1, "Color is required"),
-  coatingRate: z.coerce.number().positive("Rate must be greater than 0"),
   sourceOutwardChallanId: z.string().optional(),
   sourceOutwardChallanNumber: z.string().optional(),
 });
@@ -138,8 +142,7 @@ function defaultItem(
 function mapItemsForForm(
   items: Challan["items"],
   formType: ChallanFormDialogProps["type"],
-  profiles: Profile[],
-  coatingRate?: number | null
+  profiles: Profile[]
 ) {
   return (items ?? []).map((item) => {
     if (formType !== "powder_coating") return item;
@@ -151,24 +154,22 @@ function mapItemsForForm(
     return {
       ...item,
       length,
-      rate: getPowderCoatingChallanRate(profile, length, coatingRate),
+      rate: getPowderCoatingChallanRate(profile, undefined, undefined),
     };
   });
 }
 
 function PowderCoatingRateHelp({
   profile,
-  lengthInMeter,
-  coatingRate,
   rmtrRate,
 }: {
   profile?: Profile | null;
-  lengthInMeter: number;
-  coatingRate: number;
   rmtrRate: number;
 }) {
+  const formulaRate = profile ? resolvePowderCoatingInputRate(undefined, profile) : 0;
+
   const content = useMemo(() => {
-    if (!lengthInMeter || !coatingRate) {
+    if (!profile) {
       return (
         <>
           <p>{POWDER_COATING_RMM_FORMULA}</p>
@@ -177,9 +178,9 @@ function PowderCoatingRateHelp({
       );
     }
 
-    const rmm = calculatePowderCoatingRmmFromLength(lengthInMeter, coatingRate);
+    const rmm = getProfilePowderCoatingRmmValue(profile);
 
-    if (!rmm || !rmtrRate) {
+    if (!rmm || !formulaRate || !rmtrRate) {
       return (
         <>
           <p>{POWDER_COATING_RMM_FORMULA}</p>
@@ -191,18 +192,15 @@ function PowderCoatingRateHelp({
     return (
       <>
         <p>{POWDER_COATING_RMM_FORMULA}</p>
-        <p className="mt-1.5 text-muted-foreground">
-          {formatNumber(lengthInMeter, 4)} × {formatNumber(coatingRate, 4)} × 1000 ={" "}
-          {formatNumber(rmm, 2)}
-        </p>
+        <p className="mt-1.5 text-muted-foreground">RMM = {formatNumber(rmm, 2)}</p>
         <p className="mt-2">{POWDER_COATING_RATE_FORMULA}</p>
         <p className="mt-1.5 text-muted-foreground">
-          ({formatNumber(rmm, 2)} / 305) × {formatNumber(coatingRate, 4)} × 3.24 ={" "}
+          ({formatNumber(rmm, 2)} / 305) × {formatNumber(formulaRate, 4)} × 3.24 ={" "}
           {formatNumber(rmtrRate, 2)}
         </p>
       </>
     );
-  }, [coatingRate, lengthInMeter, rmtrRate]);
+  }, [formulaRate, profile, rmtrRate]);
 
   return (
     <Tooltip>
@@ -258,23 +256,19 @@ export function ChallanFormDialog({
       vehicleNumber: "",
       driverName: "",
       ...(isPowderCoating
-        ? { projectName: "", coatingRate: 0 }
+        ? {
+            projectName: "",
+            outwardChallanVendorId: getDefaultOutwardChallanVendorId(vendors),
+            color: "",
+            sourceOutwardChallanId: "",
+            sourceOutwardChallanNumber: "",
+          }
         : {
             projectName: "",
             totalBundles: "",
             totalWeightManual: "",
-            outwardChallanVendorId: getDefaultOutwardChallanVendorId(vendors),
           }),
       items: [defaultItem(type, defaultChallanLength)],
-      ...(isPowderCoating
-        ? {
-            color: "",
-            projectName: "",
-            coatingRate: 0,
-            sourceOutwardChallanId: "",
-            sourceOutwardChallanNumber: "",
-          }
-        : {}),
     },
   });
 
@@ -287,8 +281,6 @@ export function ChallanFormDialog({
   const vendorName = form.watch("vendorName");
   const watchedItems = form.watch("items");
 
-  const coatingRateValue = isPowderCoating ? Number(coatingValues?.coatingRate) || 0 : 0;
-
   const calculatedTotalNoOfProfiles = useMemo(
     () => (type === "outward" ? sumChallanItemQuantities(watchedItems ?? []) : 0),
     [type, watchedItems]
@@ -300,24 +292,19 @@ export function ChallanFormDialog({
     [type, watchedItems, profiles]
   );
 
-  const recalcPowderCoatingItemRates = useCallback(
-    (inputRate = coatingRateValue) => {
-      if (!isPowderCoating || !inputRate) return;
-      fields.forEach((_, index) => {
-        const profileCode = form.getValues(`items.${index}.profileCode`);
-        const profile = findProfileByCode(profiles, profileCode);
-        if (!profile) return;
-        const length = Number(form.getValues(`items.${index}.length`)) || 0;
-        if (!length) return;
-        form.setValue(
-          `items.${index}.rate`,
-          getPowderCoatingChallanRate(profile, length, inputRate),
-          { shouldValidate: true }
-        );
-      });
-    },
-    [coatingRateValue, fields, form, isPowderCoating, profiles]
-  );
+  const recalcPowderCoatingItemRates = useCallback(() => {
+    if (!isPowderCoating) return;
+    fields.forEach((_, index) => {
+      const profileCode = form.getValues(`items.${index}.profileCode`);
+      const profile = findProfileByCode(profiles, profileCode);
+      if (!profile) return;
+      form.setValue(
+        `items.${index}.rate`,
+        getPowderCoatingChallanRate(profile, undefined, undefined),
+        { shouldValidate: true }
+      );
+    });
+  }, [fields, form, isPowderCoating, profiles]);
 
   const outwardChallans = useMemo(
     () => getOutwardChallans(allChallans ?? []),
@@ -329,7 +316,7 @@ export function ChallanFormDialog({
     [vendors]
   );
 
-  const outwardChallanVendorId = !isPowderCoating
+  const outwardChallanVendorId = isPowderCoating
     ? (form.watch("outwardChallanVendorId" as "outwardChallanVendorId") as string)
     : "";
 
@@ -371,6 +358,11 @@ export function ChallanFormDialog({
   const profileOptions = useMemo(
     () => getProfileSelectOptions(selectableProfiles),
     [selectableProfiles]
+  );
+
+  const profileByCode = useMemo(
+    () => buildProfileByCodeMap(profiles),
+    [profiles]
   );
 
   const onVendorSelect = (partyName: string) => {
@@ -437,11 +429,10 @@ export function ChallanFormDialog({
       weightFromConversionUnit(profile, { length, qty }),
       { shouldValidate: true, shouldDirty: true }
     );
-    if (isPowderCoating && length > 0) {
-      const inputRate = Number(form.getValues("coatingRate" as "coatingRate")) || 0;
+    if (isPowderCoating) {
       form.setValue(
         `items.${index}.rate`,
-        getPowderCoatingChallanRate(profile, length, inputRate),
+        getPowderCoatingChallanRate(profile, undefined, undefined),
         { shouldValidate: true }
       );
     }
@@ -449,8 +440,8 @@ export function ChallanFormDialog({
 
   useEffect(() => {
     if (!open || !isPowderCoating) return;
-    recalcPowderCoatingItemRates(coatingRateValue);
-  }, [coatingRateValue, open, isPowderCoating, fields.length, recalcPowderCoatingItemRates]);
+    recalcPowderCoatingItemRates();
+  }, [open, isPowderCoating, fields.length, recalcPowderCoatingItemRates]);
 
   useEffect(() => {
     if (!open) return;
@@ -469,17 +460,14 @@ export function ChallanFormDialog({
           ? {
               projectName: getOutwardChallanProjectName(challanToEdit),
               color: challanToEdit.color,
-              coatingRate: challanToEdit.coatingRate ?? 0,
               sourceOutwardChallanId: challanToEdit.sourceOutwardChallanId ?? "",
               sourceOutwardChallanNumber: challanToEdit.sourceOutwardChallanNumber ?? "",
+              outwardChallanVendorId:
+                challanToEdit.outwardChallanVendorId ??
+                getDefaultOutwardChallanVendorId(vendors),
             }
           : {
               projectName: getOutwardChallanProjectName(challanToEdit),
-              outwardChallanVendorId:
-                challanToEdit.type === "outward"
-                  ? challanToEdit.outwardChallanVendorId ??
-                    getDefaultOutwardChallanVendorId(vendors)
-                  : getDefaultOutwardChallanVendorId(vendors),
               totalBundles:
                 challanToEdit.type === "outward" && challanToEdit.totalBundles != null
                   ? String(challanToEdit.totalBundles)
@@ -489,21 +477,9 @@ export function ChallanFormDialog({
                   ? String(challanToEdit.totalWeightManual)
                   : "",
             }),
-        items: mapItemsForForm(
-          challanToEdit.items ?? [],
-          type,
-          profiles,
-          challanToEdit.type === "powder_coating" ? challanToEdit.coatingRate : undefined
-        ),
+        items: mapItemsForForm(challanToEdit.items ?? [], type, profiles),
       } as OutwardForm | CoatingForm);
-      replace(
-        mapItemsForForm(
-          challanToEdit.items ?? [],
-          type,
-          profiles,
-          challanToEdit.type === "powder_coating" ? challanToEdit.coatingRate : undefined
-        )
-      );
+      replace(mapItemsForForm(challanToEdit.items ?? [], type, profiles));
       if (!challanToEdit.vendorAddress && challanToEdit.vendorName) {
         const vendor = findVendorByPartyName(vendors, challanToEdit.vendorName);
         if (vendor) {
@@ -527,22 +503,19 @@ export function ChallanFormDialog({
         vehicleNumber: "",
         driverName: "",
         ...(isPowderCoating
-        ? { projectName: "", coatingRate: 0 }
-        : {
-            projectName: "",
-            totalBundles: "",
-            totalWeightManual: "",
-            outwardChallanVendorId: getDefaultOutwardChallanVendorId(vendors),
-          }),
-        items: [defaultItem(type, defaultChallanLength)],
-        ...(isPowderCoating
           ? {
+              projectName: "",
+              outwardChallanVendorId: getDefaultOutwardChallanVendorId(vendors),
               color: "",
-              coatingRate: 0,
               sourceOutwardChallanId: "",
               sourceOutwardChallanNumber: "",
             }
-          : {}),
+          : {
+              projectName: "",
+              totalBundles: "",
+              totalWeightManual: "",
+            }),
+        items: [defaultItem(type, defaultChallanLength)],
       } as OutwardForm | CoatingForm);
     }
   }, [open, challanToEdit, type, form, replace, vendors, profiles, defaultChallanLength, isPowderCoating]);
@@ -550,7 +523,7 @@ export function ChallanFormDialog({
   const onProfileSelect = (index: number, code: string) => {
     const profile = findProfileByCode(profiles, code);
     if (!profile) return;
-    form.setValue(`items.${index}.profileCode`, profile.code);
+    form.setValue(`items.${index}.profileCode`, getProfileCodeValue(profile));
     form.setValue(`items.${index}.profileName`, getProfileDisplayName(profile));
     form.setValue(`items.${index}.profileImage`, getProfileDesignImage(profile));
     const length =
@@ -558,34 +531,30 @@ export function ChallanFormDialog({
       profile.standardLength ||
       defaultChallanLength;
     form.setValue(`items.${index}.length`, length);
-    const inputRate = Number(form.getValues("coatingRate" as "coatingRate")) || 0;
-    const rate = getPowderCoatingChallanRate(profile, length, inputRate);
     if (isPowderCoating) {
-      form.setValue(`items.${index}.rate`, rate, { shouldValidate: true });
+      form.setValue(
+        `items.${index}.rate`,
+        getPowderCoatingChallanRate(profile, undefined, undefined),
+        { shouldValidate: true }
+      );
     }
     updateItemWeight(index);
   };
 
-  const onSubmit = async (data: OutwardForm | CoatingForm) => {
-    const coatingInputRate =
-      isPowderCoating ? Number((data as CoatingForm).coatingRate) || 0 : 0;
+  const onSubmit = (data: OutwardForm | CoatingForm) => {
     const items =
       isPowderCoating
         ? data.items.map((item) => {
-            const profile = findProfileByCode(profiles, item.profileCode);
+            const profile = findProfileInMap(profileByCode, item.profileCode);
             return {
               ...item,
               rate: profile
-                ? getPowderCoatingChallanRate(
-                    profile,
-                    Number(item.length) || 0,
-                    coatingInputRate
-                  )
+                ? getPowderCoatingChallanRate(profile, undefined, undefined)
                 : item.rate ?? 0,
             };
           })
         : data.items.map(({ rate: _rate, ...item }) => {
-            const profile = findProfileByCode(profiles, item.profileCode);
+            const profile = findProfileInMap(profileByCode, item.profileCode);
             const length = Number(item.length) || 0;
             const qty = Number(item.qty) || 0;
             return {
@@ -624,17 +593,22 @@ export function ChallanFormDialog({
         totalWeightManualRaw && !Number.isNaN(Number(totalWeightManualRaw))
           ? Math.max(0, Math.round(Number(totalWeightManualRaw) * 100) / 100)
           : undefined;
-      const issuer = findOutwardChallanIssuerById(
-        vendors,
-        outwardData.outwardChallanVendorId
-      );
       const totalNoOfProfiles = sumChallanItemQuantities(data.items);
-      const totalWeightAllProfiles = sumChallanItemWeights(data.items, profiles);
+      const totalWeightAllProfiles =
+        Math.round(
+          data.items.reduce((sum, item) => {
+            const profile = findProfileInMap(profileByCode, item.profileCode);
+            const length = Number(item.length) || 0;
+            const qty = Number(item.qty) || 0;
+            if (profile && length > 0 && qty > 0) {
+              return sum + weightFromConversionUnit(profile, { length, qty });
+            }
+            return sum + Math.max(0, Number(item.weight) || 0);
+          }, 0) * 100
+        ) / 100;
       challan = {
         ...base,
         type: "outward",
-        outwardChallanVendorId: outwardData.outwardChallanVendorId,
-        outwardChallanVendorName: issuer?.partyName,
         projectName: outwardData.projectName?.trim() || undefined,
         totalBundles,
         totalWeightManual,
@@ -643,19 +617,24 @@ export function ChallanFormDialog({
       };
     } else {
       const coatingData = data as CoatingForm;
+      const issuer = findOutwardChallanIssuerById(
+        vendors,
+        coatingData.outwardChallanVendorId
+      );
       challan = {
         ...base,
         type: "powder_coating",
+        outwardChallanVendorId: coatingData.outwardChallanVendorId,
+        outwardChallanVendorName: issuer?.partyName,
         projectName: coatingData.projectName?.trim() || undefined,
         color: coatingData.color.trim() as CoatingColor,
-        coatingRate: Math.round(coatingInputRate * 10000) / 10000,
         sourceOutwardChallanId: coatingData.sourceOutwardChallanId?.trim() || undefined,
         sourceOutwardChallanNumber: coatingData.sourceOutwardChallanNumber?.trim() || undefined,
       };
     }
 
-    await onSave(challan);
     setOpen(false);
+    void onSave(challan);
   };
 
   const title =
@@ -695,14 +674,14 @@ export function ChallanFormDialog({
       <TooltipProvider delayDuration={150}>
           <FormSection title="Challan details">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {type === "outward" && (
+            {isPowderCoating && (
               <FormField
-                label="Outward Challan Vendor"
+                label="Powder Coating"
                 required
                 className="sm:col-span-2"
                 error={resolveFieldError(
                   form.formState.isSubmitted,
-                  (form.formState.errors as FieldErrors<OutwardForm>).outwardChallanVendorId
+                  (form.formState.errors as FieldErrors<CoatingForm>).outwardChallanVendorId
                 )}
               >
                 <SearchableSelect
@@ -716,11 +695,11 @@ export function ChallanFormDialog({
                     value: vendor.id,
                     label: vendor.challanHeaderName?.trim() || vendor.partyName,
                   }))}
-                  placeholder="Select outward challan vendor"
-                  searchPlaceholder="Search outward challan vendor…"
+                  placeholder="Select powder coating vendor"
+                  searchPlaceholder="Search powder coating vendor…"
                   aria-invalid={fieldInvalid(
                     form.formState.isSubmitted,
-                    (form.formState.errors as FieldErrors<OutwardForm>).outwardChallanVendorId
+                    (form.formState.errors as FieldErrors<CoatingForm>).outwardChallanVendorId
                   )}
                 />
               </FormField>
@@ -884,46 +863,23 @@ export function ChallanFormDialog({
               </FormField>
             )}
             {type === "powder_coating" && (
-              <>
-                <FormField
-                  label="Color"
-                  required
-                  error={resolveFieldError(
+              <FormField
+                label="Color"
+                required
+                error={resolveFieldError(
+                  form.formState.isSubmitted,
+                  (form.formState.errors as FieldErrors<CoatingForm>).color
+                )}
+              >
+                <Input
+                  aria-invalid={fieldInvalid(
                     form.formState.isSubmitted,
                     (form.formState.errors as FieldErrors<CoatingForm>).color
                   )}
-                >
-                  <Input
-                    aria-invalid={fieldInvalid(
-                      form.formState.isSubmitted,
-                      (form.formState.errors as FieldErrors<CoatingForm>).color
-                    )}
-                    placeholder="Enter color"
-                    {...form.register("color")}
-                  />
-                </FormField>
-                <FormField
-                  label={POWDER_COATING_RATE_FIELD_LABEL}
-                  required
-                  error={resolveFieldError(
-                    form.formState.isSubmitted,
-                    (form.formState.errors as FieldErrors<CoatingForm>).coatingRate
-                  )}
-                >
-                  <Input
-                    type="number"
-                    step="any"
-                    min={0}
-                    className="tabular-nums"
-                    aria-invalid={fieldInvalid(
-                      form.formState.isSubmitted,
-                      (form.formState.errors as FieldErrors<CoatingForm>).coatingRate
-                    )}
-                    placeholder="Enter rate"
-                    {...form.register("coatingRate")}
-                  />
-                </FormField>
-              </>
+                  placeholder="Enter color"
+                  {...form.register("color")}
+                />
+              </FormField>
             )}
           </div>
           </FormSection>
@@ -984,6 +940,15 @@ export function ChallanFormDialog({
                     profiles
                   )
                 : 0;
+
+              const itemRmtrRate = itemProfile
+                ? getPowderCoatingChallanRate(itemProfile, undefined, undefined)
+                : 0;
+              const itemAmount = calculatePowderCoatingItemAmountFromValues(
+                Number(itemLength) || 0,
+                Number(itemQty) || 0,
+                itemRmtrRate
+              );
 
               return (
               <div
@@ -1046,17 +1011,7 @@ export function ChallanFormDialog({
                       <Label className="text-xs">{POWDER_COATING_RMTR_RATE_LABEL}</Label>
                       <PowderCoatingRateHelp
                         profile={itemProfile}
-                        lengthInMeter={Number(itemLength) || 0}
-                        coatingRate={coatingRateValue}
-                        rmtrRate={
-                          itemProfile
-                            ? getPowderCoatingChallanRate(
-                                itemProfile,
-                                Number(itemLength) || undefined,
-                                coatingRateValue
-                              )
-                            : 0
-                        }
+                        rmtrRate={itemRmtrRate}
                       />
                     </div>
                     <Input
@@ -1065,15 +1020,17 @@ export function ChallanFormDialog({
                       min="0"
                       className="w-full min-w-0 bg-muted"
                       readOnly
-                      value={
-                        itemProfile
-                          ? getPowderCoatingChallanRate(
-                              itemProfile,
-                              Number(itemLength) || undefined,
-                              coatingRateValue
-                            )
-                          : ""
-                      }
+                      value={itemRmtrRate > 0 ? itemRmtrRate : ""}
+                    />
+                  </div>
+                )}
+                {isPowderCoating && (
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <Label className="text-xs">Amount</Label>
+                    <Input
+                      className="w-full min-w-0 bg-muted tabular-nums"
+                      readOnly
+                      value={itemAmount > 0 ? formatCurrency(itemAmount) : "—"}
                     />
                   </div>
                 )}

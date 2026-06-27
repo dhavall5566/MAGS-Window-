@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ProfileImageUploadField } from "@/components/profiles/profile-image-upload-field";
+import { SeriesNameSelect } from "@/components/profiles/series-name-select";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -14,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
-import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
   createProfileFormSchema,
   PROFILE_FIELD_LABELS,
@@ -22,13 +22,14 @@ import {
 } from "@/lib/profile-form";
 import {
   buildProfileFromForm,
+  getProfileCodeValue,
   getProfileDesignImage,
   getProfileDyeCode,
   getProfileWeightPerMeter,
   normalizeProfile,
 } from "@/lib/profile";
 import { fieldInvalid, resolveFieldError } from "@/lib/form-utils";
-import { getSeriesFormOptions } from "@/lib/series";
+import { getActiveSeriesLabels } from "@/lib/series";
 import { useAppStore } from "@/lib/store";
 import type { Profile } from "@/types";
 
@@ -49,10 +50,9 @@ export function EditProfileDialog({
 }: EditProfileDialogProps) {
   const [designPreview, setDesignPreview] = useState<string | null>(null);
   const seriesNames = useAppStore((s) => s.seriesNames);
-
-  const seriesOptions = useMemo(
-    () => getSeriesFormOptions(seriesNames ?? [], profile?.seriesName),
-    [seriesNames, profile?.seriesName]
+  const fallbackSeriesName = useMemo(
+    () => getActiveSeriesLabels(seriesNames ?? [])[0] ?? "",
+    [seriesNames]
   );
 
   const schema = useMemo(
@@ -90,8 +90,8 @@ export function EditProfileDialog({
 
     reset(
       {
-        seriesName: profile.seriesName || seriesOptions[0] || "",
-        profileCode: profile.code || profile.seriesName,
+        seriesName: profile.seriesName || fallbackSeriesName,
+        profileCode: getProfileCodeValue(profile),
         dyeCode: getProfileDyeCode(profile),
         itemName: profile.name || profile.designName,
         powderCoatingRmm: profile.powderCoatingRmm ?? 0,
@@ -100,7 +100,7 @@ export function EditProfileDialog({
       { keepIsSubmitted: false }
     );
     setDesignPreview(null);
-  }, [open, profile, reset, seriesOptions]);
+  }, [open, profile, reset, fallbackSeriesName]);
 
   const onSubmit = (data: ProfileFormData) => {
     if (!profile) return;
@@ -157,16 +157,12 @@ export function EditProfileDialog({
                       className="sm:col-span-2 xl:col-span-2"
                       error={resolveFieldError(isSubmitted, errors.seriesName)}
                     >
-                      <SearchableSelect
+                      <SeriesNameSelect
                         id="edit-seriesName"
-                        value={selectedSeriesName || undefined}
+                        value={selectedSeriesName}
                         onValueChange={(value) =>
                           setValue("seriesName", value, { shouldValidate: isSubmitted })
                         }
-                        disabled={seriesOptions.length === 0}
-                        options={stringSelectOptions(seriesOptions, "font-mono")}
-                        placeholder="Select series"
-                        searchPlaceholder="Search series…"
                         className="font-mono"
                         aria-invalid={fieldInvalid(isSubmitted, errors.seriesName)}
                       />

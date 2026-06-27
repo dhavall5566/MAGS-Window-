@@ -124,6 +124,7 @@ export function PurchaseOrderFormDialog({
                 return {
                   ...item,
                   dyeCode: item.dyeCode ?? (profile ? getProfileDyeCode(profile) : ""),
+                  uom: DEFAULT_PO_UOM,
                 };
               })
             : [defaultPurchaseOrderItem()],
@@ -152,29 +153,35 @@ export function PurchaseOrderFormDialog({
     setValue("contactNo", details.vendorContact);
   };
 
-  const recalcWeight = (index: number) => {
+  const recalcWeight = (
+    index: number,
+    overrides?: Partial<Pick<PurchaseOrderFormData["items"][number], "kgPerMeter" | "length" | "qty">>
+  ) => {
     const item = form.getValues(`items.${index}`);
     setValue(
       `items.${index}.totalWeightKg`,
       computePurchaseOrderItemWeight(
-        Number(item.kgPerMeter) || 0,
-        Number(item.length) || 0,
-        Number(item.qty) || 0,
-        item.uom || DEFAULT_PO_UOM
+        Number(overrides?.kgPerMeter ?? item?.kgPerMeter) || 0,
+        Number(overrides?.length ?? item?.length) || 0,
+        Number(overrides?.qty ?? item?.qty) || 0
       ),
       { shouldValidate: isSubmitted }
     );
   };
 
-  const recalcQty = (index: number) => {
+  const recalcQty = (
+    index: number,
+    overrides?: Partial<
+      Pick<PurchaseOrderFormData["items"][number], "kgPerMeter" | "length" | "totalWeightKg">
+    >
+  ) => {
     const item = form.getValues(`items.${index}`);
     setValue(
       `items.${index}.qty`,
       computePurchaseOrderItemQty(
-        Number(item.kgPerMeter) || 0,
-        Number(item.length) || 0,
-        Number(item.totalWeightKg) || 0,
-        item.uom || DEFAULT_PO_UOM
+        Number(overrides?.kgPerMeter ?? item?.kgPerMeter) || 0,
+        Number(overrides?.length ?? item?.length) || 0,
+        Number(overrides?.totalWeightKg ?? item?.totalWeightKg) || 0
       ),
       { shouldValidate: isSubmitted }
     );
@@ -199,6 +206,7 @@ export function PurchaseOrderFormDialog({
     setValue(`items.${index}.profileName`, details.profileName);
     setValue(`items.${index}.profileImage`, details.profileImage);
     setValue(`items.${index}.kgPerMeter`, details.kgPerMeter);
+    setValue(`items.${index}.uom`, DEFAULT_PO_UOM, { shouldValidate: false });
     syncLineItemDerivedValues(index);
   };
 
@@ -233,7 +241,16 @@ export function PurchaseOrderFormDialog({
   const onLengthChange = (index: number, raw: string) => {
     const normalized = normalizePurchaseOrderLengthMm(raw);
     setValue(`items.${index}.length`, normalized, { shouldValidate: isSubmitted });
-    syncLineItemDerivedValues(index);
+    const item = form.getValues(`items.${index}`);
+    const qty = Number(item?.qty) || 0;
+    const totalWeightKg = Number(item?.totalWeightKg) || 0;
+    const kgPerMeter = Number(item?.kgPerMeter) || 0;
+
+    if (qty > 0) {
+      recalcWeight(index, { length: normalized, qty, kgPerMeter });
+    } else if (totalWeightKg > 0) {
+      recalcQty(index, { length: normalized, totalWeightKg, kgPerMeter });
+    }
   };
 
   const onSubmit = (data: PurchaseOrderFormData) => {
@@ -394,7 +411,19 @@ export function PurchaseOrderFormDialog({
                     min="0"
                     className="tabular-nums"
                     {...register(`items.${index}.kgPerMeter`, {
-                      onChange: () => syncLineItemDerivedValues(index),
+                      onChange: (event) => {
+                        const kgPerMeter = Number(event.target.value) || 0;
+                        const item = form.getValues(`items.${index}`);
+                        const qty = Number(item?.qty) || 0;
+                        const totalWeightKg = Number(item?.totalWeightKg) || 0;
+                        const length = Number(item?.length) || 0;
+
+                        if (qty > 0) {
+                          recalcWeight(index, { kgPerMeter, qty, length });
+                        } else if (totalWeightKg > 0) {
+                          recalcQty(index, { kgPerMeter, totalWeightKg, length });
+                        }
+                      },
                     })}
                   />
                 </div>
@@ -422,7 +451,15 @@ export function PurchaseOrderFormDialog({
                     min="0"
                     className="tabular-nums"
                     {...register(`items.${index}.qty`, {
-                      onChange: () => recalcWeight(index),
+                      onChange: (event) => {
+                        const qty = Number(event.target.value) || 0;
+                        const item = form.getValues(`items.${index}`);
+                        recalcWeight(index, {
+                          qty,
+                          length: Number(item?.length) || 0,
+                          kgPerMeter: Number(item?.kgPerMeter) || 0,
+                        });
+                      },
                     })}
                   />
                 </div>
@@ -438,7 +475,9 @@ export function PurchaseOrderFormDialog({
                       errors.items?.[index]?.totalWeightKg
                     )}
                     {...register(`items.${index}.totalWeightKg`, {
-                      onChange: () => recalcQty(index),
+                      onChange: (event) => {
+                        recalcQty(index, { totalWeightKg: Number(event.target.value) || 0 });
+                      },
                     })}
                   />
                 </div>

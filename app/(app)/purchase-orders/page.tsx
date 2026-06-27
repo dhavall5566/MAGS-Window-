@@ -17,7 +17,7 @@ import { formatDate, formatNumber } from "@/lib/utils";
 import { getCachedJson } from "@/lib/fetch-json";
 import { useCachedApiList } from "@/hooks/use-cached-api-list";
 import { mergeProfiles } from "@/lib/profile";
-import { getPurchaseOrderTotalWeight } from "@/lib/purchase-order-form";
+import { getPurchaseOrderTotalWeight, resolvePurchaseOrderItemWeight } from "@/lib/purchase-order-form";
 import { showDeletedToast } from "@/lib/toast";
 import {
   createPurchaseOrderApi,
@@ -83,7 +83,7 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
         key: "totalWeightKg",
         header: "Total Weight",
         align: "center",
-        render: (row) => `${formatNumber(row.totalWeightKg, 2)} KG`,
+        render: (row) => `${formatNumber(resolvePurchaseOrderItemWeight(row), 2)} KG`,
       },
     ],
     []

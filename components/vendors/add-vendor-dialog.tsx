@@ -40,6 +40,7 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
       personName: "",
       phoneNo: "",
       email: "",
+      gstNo: "",
       vendorType: "delivery",
     },
   });
@@ -57,6 +58,7 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
       personName: data.personName?.trim() ?? "",
       phoneNo: data.phoneNo?.trim() ?? "",
       email: data.email?.trim() ?? "",
+      gstNo: data.gstNo?.trim() ?? "",
       vendorType: data.vendorType,
     });
     closeDialog();
@@ -67,7 +69,7 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
       open={open}
       onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}
       title="Add New Vendor"
-      description="Register a delivery, outward challan, or powder coating vendor for challans and stock operations."
+      description="Register an outward challan, powder coating, or powder coating challan vendor."
       trigger={
         <Button>
           <Plus className="h-4 w-4" />
@@ -118,6 +120,14 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
                 rows={3}
                 aria-invalid={fieldInvalid(isSubmitted, errors.partyAddress)}
                 {...register("partyAddress")}
+              />
+            </FormField>
+            <FormField label="GST No." htmlFor="gstNo" optional>
+              <Input
+                id="gstNo"
+                placeholder="e.g. 24AABCU9603R1ZM"
+                className="uppercase"
+                {...register("gstNo")}
               />
             </FormField>
           </FormSection>

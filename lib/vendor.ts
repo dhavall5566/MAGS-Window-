@@ -20,7 +20,7 @@ export function resolveVendorType(
   return "delivery";
 }
 
-/** Only the MAGS OC issuer keeps outward_challan; all other parties are delivery customers. */
+/** Only the MAGS OC issuer keeps outward_challan; other parties are outward challan vendors. */
 export function normalizeVendorType(
   vendor: Pick<Vendor, "id" | "partyName" | "vendorType">
 ): VendorType {

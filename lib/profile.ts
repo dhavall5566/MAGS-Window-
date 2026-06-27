@@ -38,10 +38,61 @@ export function parseProfileCodeParts(profileCode: string): {
   return { series: trimmed, code: "" };
 }
 
+export function formatProfileNo(profileNo: string): string {
+  const digits = profileNo.replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length === 1 ? digits.padStart(2, "0") : digits;
+}
+
+export function buildProfileName(seriesName: string, profileNo: string): string {
+  const formatted = formatProfileNo(profileNo);
+  if (!seriesName || !formatted) return "";
+  return `${seriesName}-${formatted}`;
+}
+
+function getCompactSeriesCode(
+  profile: Pick<Profile, "code" | "seriesName">
+): string {
+  const seriesName = profile.seriesName?.trim() ?? "";
+  if (seriesName) {
+    const compact = seriesName.split(/\s+/)[0] ?? "";
+    if (compact) return compact;
+  }
+  const stored = profile.code?.trim() ?? "";
+  if (!stored) return "";
+  return parseProfileCodeParts(stored).series;
+}
+
+function resolveProfileNumber(
+  profile: Pick<Profile, "code" | "profileNo">
+): string {
+  const profileNo = profile.profileNo?.trim();
+  if (profileNo) return profileNo;
+  const stored = profile.code?.trim() ?? "";
+  if (!stored) return "";
+  const parsed = parseProfileCodeParts(stored);
+  if (parsed.code) return parsed.code;
+  return stored;
+}
+
+/** Canonical profile code — always `{series}-{profileNo}` (e.g. SL150-14, MCW38-01). */
+export function resolveProfileCode(
+  profile: Pick<Profile, "code" | "seriesName" | "profileNo">
+): string {
+  const series = getCompactSeriesCode(profile);
+  const profileNo = resolveProfileNumber(profile);
+  if (series && profileNo) {
+    const built = buildProfileName(series, profileNo);
+    if (built) return built;
+  }
+  const stored = profile.code?.trim() ?? "";
+  return stored || series;
+}
+
 export function getProfileCodeValue(
   profile: Pick<Profile, "code" | "seriesName" | "profileNo">
 ): string {
-  return profile.code || profile.seriesName || "";
+  return resolveProfileCode(profile);
 }
 
 export function getProfileSeriesAndCode(
@@ -154,18 +205,6 @@ export function matchesItemsProfileCodeFilters(
   );
 }
 
-export function formatProfileNo(profileNo: string): string {
-  const digits = profileNo.replace(/\D/g, "");
-  if (!digits) return "";
-  return digits.length === 1 ? digits.padStart(2, "0") : digits;
-}
-
-export function buildProfileName(seriesName: string, profileNo: string): string {
-  const formatted = formatProfileNo(profileNo);
-  if (!seriesName || !formatted) return "";
-  return `${seriesName}-${formatted}`;
-}
-
 export function getProfileDisplayName(profile: Pick<Profile, "name" | "seriesName" | "profileNo">): string {
   if (profile.name) return profile.name;
   return buildProfileName(profile.seriesName, profile.profileNo ?? "");
@@ -236,8 +275,45 @@ export function findProfileByCode(
   profiles: Profile[],
   profileCode: string
 ): Profile | undefined {
-  const profile = profiles.find((p) => p.code === profileCode || p.name === profileCode);
+  const trimmed = profileCode.trim();
+  if (!trimmed) return undefined;
+  const profile = profiles.find((p) => {
+    const canonical = getProfileCodeValue(p);
+    return (
+      canonical === trimmed ||
+      p.code === trimmed ||
+      p.name === trimmed ||
+      p.profileNo === trimmed
+    );
+  });
   return profile ? normalizeProfile(profile) : undefined;
+}
+
+/** O(1) profile lookups during challan save and other batch operations. */
+export function buildProfileByCodeMap(profiles: Profile[]): Map<string, Profile> {
+  const map = new Map<string, Profile>();
+  for (const raw of profiles) {
+    const profile = normalizeProfile(raw);
+    const keys = new Set<string>();
+    const canonical = getProfileCodeValue(profile);
+    if (canonical) keys.add(canonical);
+    if (profile.code?.trim()) keys.add(profile.code.trim());
+    if (profile.profileNo?.trim()) keys.add(profile.profileNo.trim());
+    if (profile.name?.trim()) keys.add(profile.name.trim());
+    keys.forEach((key) => {
+      if (!map.has(key)) map.set(key, profile);
+    });
+  }
+  return map;
+}
+
+export function findProfileInMap(
+  map: Map<string, Profile>,
+  profileCode: string
+): Profile | undefined {
+  const trimmed = profileCode.trim();
+  if (!trimmed) return undefined;
+  return map.get(trimmed);
 }
 
 /** Profiles that appear in powder coating batches — used for powder coating challan item pickers. */
@@ -464,10 +540,13 @@ export const POWDER_COATING_RMTR_RATE_LABEL = "R MTR RATE";
 export const POWDER_COATING_RATE_FIELD_LABEL = "Rate";
 
 export const POWDER_COATING_RMM_FORMULA =
-  "RMM = Length (m) × Rate × 1000";
+  "RMM is stored on each profile in Profile Master";
 
 export const POWDER_COATING_RATE_FORMULA =
-  "R MTR RATE = (RMM / 305) × Rate × 3.24";
+  "R MTR RATE = (RMM / 305) × Profile KG/MTR × 3.24";
+
+export const POWDER_COATING_AMOUNT_FORMULA =
+  "Amount = Length × Qty × R MTR RATE";
 
 /** Manual challan Rate input, falling back to profile KG/MTR for legacy rows. */
 export function resolvePowderCoatingInputRate(
@@ -495,7 +574,7 @@ export function getPowderCoatingFormulaRate(
   return profile.rate ?? profile.perKgRate ?? 0;
 }
 
-/** RMM for a powder coating challan line — length (m) × Rate × 1000. */
+/** @deprecated Legacy helper; prefer getProfilePowderCoatingRmmValue for challan rates. */
 export function calculatePowderCoatingRmmFromLength(
   lengthInMeters: number,
   formulaRate: number
@@ -506,21 +585,19 @@ export function calculatePowderCoatingRmmFromLength(
   return Math.round(length * rate * 1000 * 100) / 100;
 }
 
-/** @deprecated Use calculatePowderCoatingRmmFromLength for challan line items. */
-export function getProfilePowderCoatingRmm(
-  profile: Pick<
-    Profile,
-    "powderCoatingRmm" | "purchaseUnitQty" | "rmm" | "conversionUnitQty" | "weightPerMeter"
-  >,
-  lengthInMeter?: number
+/** RMM from profile master — not calculated. */
+export function getProfilePowderCoatingRmmValue(
+  profile: Pick<Profile, "powderCoatingRmm">
 ): number {
-  const kgPerMeter = getProfileWeightPerMeter(profile);
-  if (lengthInMeter && lengthInMeter > 0 && kgPerMeter > 0) {
-    return calculatePowderCoatingRmmFromLength(lengthInMeter, kgPerMeter);
-  }
-  const powderRmm = profile.powderCoatingRmm ?? 0;
-  if (powderRmm > 0) return powderRmm;
-  return getProfileRmmValue(profile, lengthInMeter);
+  return Math.max(0, Number(profile.powderCoatingRmm) || 0);
+}
+
+/** @deprecated Prefer getProfilePowderCoatingRmmValue. */
+export function getProfilePowderCoatingRmm(
+  profile: Pick<Profile, "powderCoatingRmm">,
+  _lengthInMeter?: number
+): number {
+  return getProfilePowderCoatingRmmValue(profile);
 }
 
 /** Powder coating R MTR RATE = (RMM / 305) × Rate × 3.24 */
@@ -540,21 +617,15 @@ export function calculatePowderCoatingRateFromRmmAndRate(
 export function getPowderCoatingChallanRate(
   profile: Pick<
     Profile,
-    | "rate"
-    | "perKgRate"
-    | "powderCoatingRmm"
-    | "purchaseUnitQty"
-    | "rmm"
-    | "conversionUnitQty"
-    | "weightPerMeter"
+    "rate" | "perKgRate" | "powderCoatingRmm" | "weightPerMeter" | "purchaseUnitQty" | "conversionUnitQty"
   >,
-  lengthInMeter?: number,
+  _lengthInMeter?: number,
   coatingRate?: number | null
 ): number {
   const formulaRate = resolvePowderCoatingInputRate(coatingRate, profile);
-  const length = Number(lengthInMeter) || 0;
-  if (!formulaRate || !length) return 0;
-  const rmm = calculatePowderCoatingRmmFromLength(length, formulaRate);
+  if (!formulaRate) return 0;
+  const rmm = getProfilePowderCoatingRmmValue(profile);
+  if (!rmm) return 0;
   return calculatePowderCoatingRateFromRmmAndRate(rmm, formulaRate);
 }
 
@@ -564,29 +635,37 @@ export function getPowderCoatingItemRate(
   coatingRate?: number | null
 ): number {
   if (profile) {
-    const length = Number(item.length) || 0;
-    return getPowderCoatingChallanRate(
-      profile,
-      length > 0 ? length : undefined,
-      coatingRate
-    );
+    return getPowderCoatingChallanRate(profile, undefined, coatingRate);
   }
   if (item.rate != null && item.rate > 0) return item.rate;
   return 0;
 }
 
-/** Powder coating line amount = Length (m) × R MTR RATE × Qty */
+/** Amount = Length (m) × Qty × R MTR RATE */
+export function calculatePowderCoatingItemAmountFromValues(
+  lengthInMeter: number,
+  qty: number,
+  rmtrRate: number
+): number {
+  const length = Number(lengthInMeter) || 0;
+  const quantity = Number(qty) || 0;
+  const rate = Number(rmtrRate) || 0;
+  if (!length || !quantity || !rate) return 0;
+  return Math.round(length * quantity * rate * 100) / 100;
+}
+
+/** Powder coating line amount = Length (m) × Qty × R MTR RATE */
 export function calculatePowderCoatingItemAmount(
   item: Pick<ChallanItem, "length" | "qty" | "rate" | "profileCode">,
   profile?: Profile | null,
   coatingRate?: number | null
 ): number {
-  const length = Number(item.length) || 0;
-  const qty = Number(item.qty) || 0;
-  if (!length || !qty) return 0;
-  const rate = getPowderCoatingItemRate(item, profile, coatingRate);
-  if (!rate) return 0;
-  return Math.round(length * qty * rate * 100) / 100;
+  const rmtrRate = getPowderCoatingItemRate(item, profile, coatingRate);
+  return calculatePowderCoatingItemAmountFromValues(
+    Number(item.length) || 0,
+    Number(item.qty) || 0,
+    rmtrRate
+  );
 }
 
 function calculateRatePerMeter(lengthInMeter: number, rate: number): number {
@@ -934,6 +1013,7 @@ export function normalizeProfile(profile: Profile): Profile {
 
   return {
     ...baseWithoutRate,
+    code: resolveProfileCode(baseWithoutRate),
     dyeCode: getProfileDyeCode(baseWithoutRate) || undefined,
     rmm: canonicalLength,
     powderCoatingRmm: baseWithoutRate.powderCoatingRmm ?? 0,

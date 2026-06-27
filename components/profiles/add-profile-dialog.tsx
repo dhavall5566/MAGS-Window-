@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { ProfileImageUploadField } from "@/components/profiles/profile-image-upload-field";
+import { SeriesNameSelect } from "@/components/profiles/series-name-select";
 import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { FormField, FormSection } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
   createProfileFormSchema,
   PROFILE_FIELD_LABELS,
@@ -39,9 +39,8 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
   const [open, setOpen] = useState(false);
   const [designPreview, setDesignPreview] = useState<string | null>(null);
   const seriesNames = useAppStore((s) => s.seriesNames);
-
-  const seriesOptions = useMemo(
-    () => getActiveSeriesLabels(seriesNames ?? []),
+  const defaultSeriesName = useMemo(
+    () => getActiveSeriesLabels(seriesNames ?? [])[0] ?? "",
     [seriesNames]
   );
 
@@ -76,7 +75,7 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
   const closeDialog = () => {
     setOpen(false);
     reset({
-      seriesName: seriesOptions[0] ?? "",
+      seriesName: defaultSeriesName,
       profileCode: "",
       dyeCode: "",
       itemName: "",
@@ -98,7 +97,7 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
         if (next) {
           setOpen(true);
           reset({
-            seriesName: seriesOptions[0] ?? "",
+            seriesName: defaultSeriesName,
             profileCode: "",
             dyeCode: "",
             itemName: "",
@@ -142,22 +141,13 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
                     required
                     className="sm:col-span-2 xl:col-span-2"
                     error={resolveFieldError(isSubmitted, errors.seriesName)}
-                    hint={
-                      seriesOptions.length === 0
-                        ? "Add a series in Series Name before creating profiles."
-                        : undefined
-                    }
                   >
-                    <SearchableSelect
+                    <SeriesNameSelect
                       id="seriesName"
-                      value={selectedSeriesName || undefined}
+                      value={selectedSeriesName}
                       onValueChange={(value) =>
                         setValue("seriesName", value, { shouldValidate: isSubmitted })
                       }
-                      disabled={seriesOptions.length === 0}
-                      options={stringSelectOptions(seriesOptions, "font-mono")}
-                      placeholder="Select series"
-                      searchPlaceholder="Search series…"
                       className="font-mono"
                       aria-invalid={fieldInvalid(isSubmitted, errors.seriesName)}
                     />
@@ -248,7 +238,6 @@ export function AddProfileDialog({ existingProfiles, onSave }: AddProfileDialogP
               submitLabel="Save Profile"
               loadingLabel="Saving"
               isSubmitting={isSubmitting}
-              disabled={seriesOptions.length === 0}
             />
           </div>
         </form>

@@ -1,6 +1,6 @@
 import { COMPANY, DELIVERY_CHALLAN } from "@/lib/company";
 import { formatPartyAddress } from "@/lib/vendor";
-import type { OutwardChallan, Vendor } from "@/types";
+import type { PowderCoatingChallan, Vendor } from "@/types";
 
 export const MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc";
 
@@ -105,7 +105,7 @@ export function getOutwardChallanPdfBranding(
 }
 
 export function resolveOutwardChallanPdfBranding(
-  challan: OutwardChallan,
+  challan: Pick<PowderCoatingChallan, "outwardChallanVendorId">,
   vendors: Vendor[]
 ): OutwardChallanPdfBranding {
   const vendor =

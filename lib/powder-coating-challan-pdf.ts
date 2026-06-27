@@ -102,7 +102,10 @@ function getItemRate(
   return getPowderCoatingItemRate(item, profile, coatingRate);
 }
 
-function buildMetaRows(challan: Challan): ReadonlyArray<readonly [string, string]> {
+function buildMetaRows(
+  challan: Challan,
+  options?: { issuerGstNo?: string }
+): ReadonlyArray<readonly [string, string]> {
   const rows: Array<[string, string]> = [
     [getChallanNumberMetaLabel(challan.type), challan.challanNumber?.trim() || ""],
     ["Date", formatChallanDate(challan.date)],
@@ -113,18 +116,14 @@ function buildMetaRows(challan: Challan): ReadonlyArray<readonly [string, string
     const outward = challan as OutwardChallan;
     const projectName = getOutwardChallanProjectName(outward);
     if (projectName) rows.push(["Project Name", projectName]);
-    if (outward.totalBundles != null) rows.push(["Total Bundles", String(outward.totalBundles)]);
-    if (outward.totalWeightManual != null) {
-      rows.push(["Total Wt. Manual", formatWeightKg(outward.totalWeightManual)]);
+    if (options?.issuerGstNo?.trim()) {
+      rows.push(["GST No.", options.issuerGstNo.trim()]);
     }
   }
 
   if (challan.type === "powder_coating") {
     const coating = challan as PowderCoatingChallan;
     rows.push(["Color", coating.color?.trim() || ""]);
-    if (coating.coatingRate != null && coating.coatingRate > 0) {
-      rows.push(["Rate", String(coating.coatingRate)]);
-    }
     if (coating.sourceOutwardChallanNumber?.trim()) {
       rows.push(["Outward Challan", coating.sourceOutwardChallanNumber.trim()]);
     }
@@ -168,7 +167,8 @@ function drawChallanSignatureFooter(
     width: number;
     totalAmount: number | null;
     totalNoOfProfiles?: number | null;
-    gstNo: string;
+    gstNo?: string;
+    footerLeftLines?: string[];
     signatoryLine: string;
     drawLine: (x1: number, y1: number, x2: number, y2: number, lw?: number) => void;
     cellText: (
@@ -184,10 +184,21 @@ function drawChallanSignatureFooter(
     ) => void;
   }
 ): number {
-  const { left, y, width, totalAmount, totalNoOfProfiles, gstNo, signatoryLine, drawLine, cellText } =
-    options;
+  const {
+    left,
+    y,
+    width,
+    totalAmount,
+    totalNoOfProfiles,
+    gstNo,
+    footerLeftLines,
+    signatoryLine,
+    drawLine,
+    cellText,
+  } = options;
   const right = left + width;
-  const topRowH = 8;
+  const topRowH =
+    footerLeftLines && footerLeftLines.length > 1 && footerLeftLines.length !== 2 ? 10 : 8;
   const middleRowH = 14;
   const bottomRowH = 8;
   const footerH = topRowH + middleRowH + bottomRowH;
@@ -201,7 +212,19 @@ function drawChallanSignatureFooter(
 
   doc.setFillColor(...C.headFill);
   doc.rect(left, y, width, topRowH, "F");
-  cellText(`GST NO: ${gstNo}`, left + 2, y + 5.2, { bold: true, size: 8 });
+
+  if (footerLeftLines?.length) {
+    if (footerLeftLines.length === 2) {
+      cellText(footerLeftLines[0], left + 2, y + 5.2, { bold: true, size: 7.5 });
+      cellText(footerLeftLines[1], left + leftW * 0.48, y + 5.2, { bold: true, size: 7.5 });
+    } else {
+      footerLeftLines.forEach((line, index) => {
+        cellText(line, left + 2, y + 3.8 + index * 3.6, { bold: true, size: 7.5 });
+      });
+    }
+  } else if (gstNo) {
+    cellText(`GST NO: ${gstNo}`, left + 2, y + 5.2, { bold: true, size: 8 });
+  }
 
   if (totalAmount != null) {
     cellText("TOTAL", rightX + totalLabelW / 2, y + 5.2, { bold: true, size: 8, align: "center" });
@@ -297,7 +320,7 @@ export async function generateChallanDocumentPDF(
     "";
 
   const pdfBranding =
-    challan.type === "outward"
+    challan.type === "powder_coating"
       ? resolveOutwardChallanPdfBranding(challan, vendors)
       : getOutwardChallanPdfBranding(undefined);
 
@@ -409,7 +432,9 @@ export async function generateChallanDocumentPDF(
     ["GST No.", partyGstNo],
   ] as const;
   const leftBlockH = rowH + addressH + rowH * afterAddressRows.length;
-  const metaRows = buildMetaRows(challan);
+  const metaRows = buildMetaRows(challan, {
+    issuerGstNo: challan.type === "outward" ? pdfBranding.gstNo : undefined,
+  });
   const metaBlockH = Math.max(leftBlockH, rowH * metaRows.length);
 
   cellText("Party Name", left + 1.5, y + 4, { bold: true, size: 6.8, color: C.inkSoft });
@@ -580,6 +605,18 @@ export async function generateChallanDocumentPDF(
       ) / 100;
 
   const outwardTotalProfiles = isOutward ? sumChallanItemQuantities(items) : null;
+  const outwardFooterLeftLines = isOutward
+    ? (() => {
+        const outward = challan as OutwardChallan;
+        const bundlesText =
+          outward.totalBundles != null ? `Total Bundles: ${outward.totalBundles}` : "";
+        const weightText =
+          outward.totalWeightManual != null
+            ? `Total Weight: ${formatWeightKg(outward.totalWeightManual) || "0KG"}`
+            : "Total Weight: —";
+        return bundlesText ? [bundlesText, weightText] : [weightText];
+      })()
+    : undefined;
 
   const tableOptions: Parameters<typeof autoTable>[1] = {
     startY: y,
@@ -664,7 +701,8 @@ export async function generateChallanDocumentPDF(
     width: contentWidth,
     totalAmount: isPowderCoating ? totalAmount : null,
     totalNoOfProfiles: outwardTotalProfiles,
-    gstNo: pdfBranding.gstNo,
+    footerLeftLines: outwardFooterLeftLines,
+    gstNo: isOutward ? undefined : pdfBranding.gstNo,
     signatoryLine: pdfBranding.signatoryLine,
     drawLine,
     cellText,

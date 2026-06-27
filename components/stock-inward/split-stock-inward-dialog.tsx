@@ -31,13 +31,25 @@ const splitFormSchema = z.object({
   pieces: z
     .array(
       z.object({
-        lengthInMeter: z.coerce.number().min(0.01, "Length is required"),
+        lengthInMeter: z.string(),
       })
     )
     .min(2, "Add at least two piece lengths"),
 });
 
 type SplitFormData = z.infer<typeof splitFormSchema>;
+
+function parsePieceLengthInput(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function formatPieceLengthInput(value: string | number | undefined): string {
+  if (value === undefined || value === null) return "";
+  return String(value);
+}
 
 interface SplitStockInwardDialogProps {
   entry: StockInward | null;
@@ -51,7 +63,10 @@ interface SplitStockInwardDialogProps {
 function createDefaultPieces(parentLength: number): SplitFormData["pieces"] {
   const half = normalizeStockLength(parentLength / 2);
   const remainder = normalizeStockLength(parentLength - half);
-  return [{ lengthInMeter: half }, { lengthInMeter: remainder }];
+  return [
+    { lengthInMeter: formatStockLength(half) },
+    { lengthInMeter: formatStockLength(remainder) },
+  ];
 }
 
 export function SplitStockInwardDialog({
@@ -103,14 +118,14 @@ export function SplitStockInwardDialog({
 
   const piecePreview = useMemo(() => {
     return pieces.map((piece) => {
-      const length = normalizeStockLength(Number(piece.lengthInMeter) || 0);
+      const length = normalizeStockLength(parsePieceLengthInput(piece.lengthInMeter));
       const weight = calculateTotalWeightKg(parentQty, length, kgPerMeter);
       return { length, weight };
     });
   }, [pieces, parentQty, kgPerMeter]);
 
   const splitTotal = sumSplitPieceLengths(
-    pieces.map((piece) => ({ lengthInMeter: Number(piece.lengthInMeter) || 0 }))
+    pieces.map((piece) => ({ lengthInMeter: parsePieceLengthInput(piece.lengthInMeter) }))
   );
   const lengthMismatch =
     parentLength > 0 &&
@@ -121,22 +136,24 @@ export function SplitStockInwardDialog({
     const entered = nextPieces
       .slice(0, -1)
       .reduce(
-        (total, piece) => total + normalizeStockLength(Number(piece.lengthInMeter) || 0),
+        (total, piece) =>
+          total + normalizeStockLength(parsePieceLengthInput(piece.lengthInMeter)),
         0
       );
     const remainder = normalizeStockLength(parentLength - entered);
-    setValue(`pieces.${nextPieces.length - 1}.lengthInMeter`, remainder, {
+    setValue(`pieces.${nextPieces.length - 1}.lengthInMeter`, formatStockLength(remainder), {
       shouldDirty: true,
     });
   };
 
   const onPieceLengthChange = (index: number, value: string) => {
-    const numeric = Number(value) || 0;
-    setValue(`pieces.${index}.lengthInMeter`, numeric, { shouldDirty: true });
+    if (value !== "" && !/^\d*\.?\d*$/.test(value)) return;
+
+    setValue(`pieces.${index}.lengthInMeter`, value, { shouldDirty: true });
     if (index < fields.length - 1) {
       syncRemainderPiece(
         pieces.map((piece, pieceIndex) =>
-          pieceIndex === index ? { lengthInMeter: numeric } : piece
+          pieceIndex === index ? { lengthInMeter: value } : piece
         )
       );
     }
@@ -146,7 +163,7 @@ export function SplitStockInwardDialog({
     if (!entry) return;
 
     const splitPieces = data.pieces.map((piece) => ({
-      lengthInMeter: normalizeStockLength(piece.lengthInMeter),
+      lengthInMeter: normalizeStockLength(parsePieceLengthInput(piece.lengthInMeter)),
     }));
     const validationError = validateStockInwardSplit(entry, splitPieces);
     if (validationError) {
@@ -225,8 +242,8 @@ export function SplitStockInwardDialog({
               size="sm"
               disabled={!canSplit}
               onClick={() => {
-                append({ lengthInMeter: 0 });
-                syncRemainderPiece([...pieces, { lengthInMeter: 0 }]);
+                append({ lengthInMeter: "" });
+                syncRemainderPiece([...pieces, { lengthInMeter: "" }]);
               }}
             >
               <Plus className="h-4 w-4" />
@@ -244,13 +261,12 @@ export function SplitStockInwardDialog({
                     {isRemainder ? " (remainder)" : ""}
                   </Label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
+                    inputMode="decimal"
                     className="tabular-nums"
                     readOnly={isRemainder}
                     disabled={!canSplit}
-                    value={pieces[index]?.lengthInMeter ?? ""}
+                    value={formatPieceLengthInput(pieces[index]?.lengthInMeter)}
                     onChange={(event) => onPieceLengthChange(index, event.target.value)}
                   />
                 </div>

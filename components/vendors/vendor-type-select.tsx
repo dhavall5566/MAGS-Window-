@@ -29,7 +29,7 @@ export function VendorTypeSelect({
           label: option.label,
         }))}
         placeholder="Select vendor type"
-        searchPlaceholder="Search vendor type…"
+        searchable={false}
         aria-invalid={Boolean(error)}
       />
     </FormField>

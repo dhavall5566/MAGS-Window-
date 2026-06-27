@@ -21,13 +21,14 @@ export const vendorFormSchema = z.object({
       (value) => !value || z.string().email().safeParse(value).success,
       "Enter a valid email address"
     ),
+  gstNo: z.string().optional().default(""),
   vendorType: vendorTypeSchema,
 });
 
 export type VendorFormData = z.infer<typeof vendorFormSchema>;
 
 export const VENDOR_TYPE_OPTIONS: { value: VendorType; label: string }[] = [
-  { value: "delivery", label: "Delivery" },
-  { value: "outward_challan", label: "Outward Challan Vendor" },
-  { value: "powder_coating", label: "Powder Coating" },
+  { value: "delivery", label: "Outward Challan" },
+  { value: "outward_challan", label: "Powder Coating" },
+  { value: "powder_coating", label: "Powder Coating Challan" },
 ];

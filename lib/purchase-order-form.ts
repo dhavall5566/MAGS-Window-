@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Profile, PurchaseOrder, PurchaseOrderItem } from "@/types";
 import {
   findProfileByCode,
+  getProfileCodeValue,
   getProfileDesignImage,
   getProfileDisplayName,
   getProfileDyeCode,
@@ -45,27 +46,41 @@ export function normalizePurchaseOrderLengthMm(raw: string | number): number {
   return Math.floor(value * 10) / 10;
 }
 
-/** Total weight (kg) = KG/MTR × length × qty. Length is divided by 1000 only when UOM is MM. */
+/** Total weight (kg) = KG/MTR × (length mm ÷ 1000) × qty. */
 export function computePurchaseOrderItemWeight(
   kgPerMeter: number,
-  length: number,
+  lengthMm: number,
   qty: number,
   uom: string = DEFAULT_PO_UOM
 ): number {
-  return computeLineWeightKg(kgPerMeter, length, qty, uom);
+  return computeLineWeightKg(kgPerMeter, lengthMm, qty, uom);
 }
 
-/** Qty = total weight (kg) ÷ (KG/MTR × length in m). */
+/** Qty = total weight (kg) ÷ (KG/MTR × length in m). Length is stored in mm. */
 export function computePurchaseOrderItemQty(
   kgPerMeter: number,
-  length: number,
+  lengthMm: number,
   totalWeightKg: number,
   uom: string = DEFAULT_PO_UOM
 ): number {
-  const lengthMeters = lengthToMeters(length, uom);
+  const lengthMeters = lengthToMeters(lengthMm, uom);
   const perUnitWeight = (Number(kgPerMeter) || 0) * lengthMeters;
   if (!perUnitWeight || !totalWeightKg) return 0;
   return Math.round((Number(totalWeightKg) / perUnitWeight) * 100) / 100;
+}
+
+/** Derive line weight from KG/MTR, length, qty, and UOM (MM ÷ 1000). */
+export function resolvePurchaseOrderItemWeight(item: PurchaseOrderItem): number {
+  const kgPerMeter = Number(item.kgPerMeter) || 0;
+  const length = Number(item.length) || 0;
+  const qty = Number(item.qty) || 0;
+  const uom = item.uom?.trim() || DEFAULT_PO_UOM;
+
+  if (kgPerMeter > 0 && length > 0 && qty > 0) {
+    return computePurchaseOrderItemWeight(kgPerMeter, length, qty, uom);
+  }
+
+  return Number(item.totalWeightKg) || 0;
 }
 
 export function defaultPurchaseOrderItem(): PurchaseOrderFormData["items"][number] {
@@ -98,7 +113,7 @@ export function buildPurchaseOrderItemFromProfile(
 > {
   return {
     dyeCode: getProfileDyeCode(profile),
-    profileCode: profile.code,
+    profileCode: getProfileCodeValue(profile),
     profileName: getProfileDisplayName(profile),
     profileImage: getProfileDesignImage(profile),
     kgPerMeter: getProfileWeightPerMeter(profile),
@@ -127,7 +142,14 @@ export function buildPurchaseOrder(
       uom: item.uom?.trim() || DEFAULT_PO_UOM,
       length: normalizePurchaseOrderLengthMm(item.length),
       qty: Number(item.qty) || 0,
-      totalWeightKg: Number(item.totalWeightKg) || 0,
+      totalWeightKg: resolvePurchaseOrderItemWeight({
+        ...item,
+        kgPerMeter:
+          Number(item.kgPerMeter) || (profile ? getProfileWeightPerMeter(profile) : 0),
+        uom: item.uom?.trim() || DEFAULT_PO_UOM,
+        length: normalizePurchaseOrderLengthMm(item.length),
+        qty: Number(item.qty) || 0,
+      }),
     };
   });
 
@@ -146,8 +168,9 @@ export function buildPurchaseOrder(
 }
 
 export function getPurchaseOrderTotalWeight(order: Pick<PurchaseOrder, "items">): number {
-  return (order.items ?? []).reduce(
-    (sum, item) => sum + (Number(item.totalWeightKg) || 0),
+  const total = (order.items ?? []).reduce(
+    (sum, item) => sum + resolvePurchaseOrderItemWeight(item),
     0
   );
+  return Math.round(total * 100) / 100;
 }

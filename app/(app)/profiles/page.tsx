@@ -17,8 +17,6 @@ import {
   getProfileCodeValue,
   getProfileDesignImage,
   getProfileDyeCode,
-  getPrimaryProfileLength,
-  getProfileRmmValue,
   getProfileWeightPerMeter,
   getProfileStatusLabel,
   normalizeProfile,
@@ -183,8 +181,8 @@ export default function ProfilesPage() {
         header: "Profile Code",
         className: "whitespace-nowrap font-mono text-xs font-medium",
         align: "left" as const,
-        sortValue: (row: Profile) => row.code || row.seriesName,
-        render: (row: Profile) => row.code || row.seriesName,
+        sortValue: (row: Profile) => getProfileCodeValue(row),
+        render: (row: Profile) => getProfileCodeValue(row),
       },
       {
         key: "dyeCode",
@@ -201,10 +199,9 @@ export default function ProfilesPage() {
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
         hideBelow: "lg" as const,
-        sortValue: (row: Profile) => getProfileRmmValue(row),
+        sortValue: (row: Profile) => row.powderCoatingRmm ?? 0,
         render: (row: Profile) => {
-          const length = getPrimaryProfileLength(row) || row.rmm || 0;
-          const rmmValue = getProfileRmmValue(row, Number(length) || undefined);
+          const rmmValue = row.powderCoatingRmm ?? 0;
           return rmmValue > 0 ? formatNumber(rmmValue, 2) : "\u2014";
         },
       },

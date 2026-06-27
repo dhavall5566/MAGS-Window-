@@ -58,12 +58,14 @@ export default function VendorsPage() {
     const phone = row.phoneNo?.toLowerCase() ?? "";
     const email = row.email?.toLowerCase() ?? "";
     const type = getVendorTypeLabel(row.vendorType).toLowerCase();
+    const gst = row.gstNo?.toLowerCase() ?? "";
     return (
       name.includes(q) ||
       address.includes(q) ||
       person.includes(q) ||
       phone.includes(q) ||
       email.includes(q) ||
+      gst.includes(q) ||
       type.includes(q)
     );
   }, []);
@@ -113,6 +115,13 @@ export default function VendorsPage() {
             {formatPartyAddress(row.partyAddress)}
           </span>
         ),
+      },
+      {
+        key: "gstNo",
+        header: "GST No.",
+        className: "whitespace-nowrap font-mono text-sm",
+        align: "left" as const,
+        render: (row: Vendor) => displayValue(row.gstNo),
       },
       {
         key: "personName",
