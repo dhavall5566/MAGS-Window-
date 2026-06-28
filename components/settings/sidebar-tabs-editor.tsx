@@ -142,16 +142,27 @@ export function SidebarTabsEditor() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          {visibleCount} of {orderedItems.length} tabs visible in the sidebar
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Drag the grip handle to reorder tabs. Toggle visibility on the right.
-        </p>
+      <div className="flex flex-col gap-3 rounded-lg border border-border/80 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {visibleCount} of {orderedItems.length} modules visible
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Drag to reorder · toggle visibility per module
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <span className="rounded-md bg-background px-2.5 py-1 text-xs font-medium ring-1 ring-border/70">
+            {visibleCount} active
+          </span>
+          <span className="rounded-md bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground ring-1 ring-border/70">
+            {orderedItems.length - visibleCount} hidden
+          </span>
+        </div>
       </div>
 
-      <ul ref={listRef} className="space-y-1.5">
+      <div className="overflow-hidden rounded-lg border border-border/80">
+        <ul ref={listRef} className="divide-y divide-border/70">
         {orderedItems.map((item, index) => {
           const Icon = item.icon;
           const active = isNavTabActive(item.href, draftHiddenNavHrefs);
@@ -163,14 +174,14 @@ export function SidebarTabsEditor() {
           const groupLabel = item.groupId ? getGroupLabel(item.groupId) : null;
 
           return (
-            <li key={item.href} data-tab-row>
+            <li key={item.href} data-tab-row className="bg-background">
               <div
                 className={cn(
-                  "flex items-center gap-2 rounded-lg border bg-muted/30 px-2 py-2 transition-all duration-150 sm:gap-3 sm:px-3",
-                  item.groupId && "ml-3 border-l-2 border-l-primary/20",
-                  !active && "opacity-60",
-                  isDragging && "scale-[0.98] opacity-40",
-                  isDropTarget && "border-primary ring-2 ring-primary/30"
+                  "flex items-center gap-2 px-3 py-2.5 transition-all duration-150 sm:gap-3 sm:px-4",
+                  item.groupId && "border-l-2 border-l-primary/25 pl-4 sm:pl-5",
+                  !active && "bg-muted/10 opacity-70",
+                  isDragging && "opacity-40",
+                  isDropTarget && "bg-primary/5 ring-1 ring-inset ring-primary/30"
                 )}
               >
                 <span className="w-5 shrink-0 text-center text-xs font-mono text-muted-foreground">
@@ -221,9 +232,10 @@ export function SidebarTabsEditor() {
             </li>
           );
         })}
-      </ul>
+        </ul>
+      </div>
 
-      <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded-lg border border-border/80 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <Button
           type="button"
           variant="ghost"

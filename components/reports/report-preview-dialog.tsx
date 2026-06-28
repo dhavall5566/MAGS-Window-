@@ -99,7 +99,7 @@ export function ReportPreviewDialog({
                         {table.headers.map((header) => (
                           <th
                             key={header}
-                            className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                            className="px-4 py-2.5 text-left text-[13px] font-bold uppercase tracking-wide text-foreground/85"
                           >
                             {header}
                           </th>

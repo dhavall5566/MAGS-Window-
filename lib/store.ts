@@ -6,14 +6,22 @@ import type { Profile, SeriesName, Challan, StockInward, Consumption, PowderCoat
 import { mockVendors } from "@/lib/mock-data/vendors";
 import { mockUsers } from "@/lib/mock-data/users";
 import { enrichChallanVendorDetails, normalizeVendor } from "@/lib/vendor";
-import { mergeVendorLists } from "@/lib/vendor-merge";
+import {
+  mergeVendorLists,
+  prepareVendorList,
+} from "@/lib/vendor-merge";
 import { getManualConsumption, filterVisibleChallans } from "@/lib/challan-consumption";
+import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
 import { normalizeProfile } from "@/lib/profile";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "@/lib/app-settings";
 import {
   DEFAULT_ROLE_PERMISSIONS,
   buildFullAccessOverrides,
-  type UserPermissionOverrides,
+  migrateRolePermissions,
+  migrateUserPermissionOverrides,
+  normalizeModuleRolePermissions,
+  type ModuleRolePermissions,
+  type UserCrudOverrides,
 } from "@/lib/role-permissions";
 import { normalizeStockInwardSupplier } from "@/lib/stock-inward-form";
 import { normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
@@ -34,11 +42,12 @@ interface AppState {
   navOrder: string[] | null;
   hiddenNavHrefs: string[];
   settings: AppSettings;
-  rolePermissions: Record<string, UserRole[]>;
-  userPermissionOverrides: UserPermissionOverrides;
+  rolePermissions: ModuleRolePermissions;
+  userPermissionOverrides: UserCrudOverrides;
   setProfiles: (profiles: Profile[]) => void;
   addProfile: (profile: Profile) => void;
   updateProfile: (id: string, updates: Partial<Profile>) => void;
+  deleteProfile: (id: string) => void;
   toggleProfileStatus: (id: string) => void;
   addSeriesName: (series: SeriesName) => void;
   updateSeriesName: (id: string, updates: Partial<SeriesName>) => void;
@@ -78,8 +87,8 @@ interface AppState {
   setHiddenNavHrefs: (hrefs: string[]) => void;
   resetNavOrder: () => void;
   updateSettings: (updates: Partial<AppSettings>) => void;
-  setRolePermissions: (permissions: Record<string, UserRole[]>) => void;
-  setUserPermissionOverrides: (overrides: UserPermissionOverrides) => void;
+  setRolePermissions: (permissions: ModuleRolePermissions) => void;
+  setUserPermissionOverrides: (overrides: UserCrudOverrides) => void;
   resetRolePermissions: () => void;
 }
 
@@ -94,14 +103,14 @@ export const useAppStore = create<AppState>()(
       consumption: [],
       powderCoating: [],
       scrap: [],
-      vendors: mockVendors.map(normalizeVendor),
+      vendors: prepareVendorList(mockVendors.map(normalizeVendor)),
       users: mockUsers,
       reports: [],
       purchaseOrders: [],
       navOrder: null,
       hiddenNavHrefs: [],
       settings: DEFAULT_APP_SETTINGS,
-      rolePermissions: DEFAULT_ROLE_PERMISSIONS,
+      rolePermissions: normalizeModuleRolePermissions(DEFAULT_ROLE_PERMISSIONS),
       userPermissionOverrides: {},
       setProfiles: (profiles) => set({ profiles }),
       addProfile: (profile) => {
@@ -117,6 +126,12 @@ export const useAppStore = create<AppState>()(
           ),
         }));
         showSavedToast("Profile");
+      },
+      deleteProfile: (id) => {
+        set((s) => ({
+          profiles: (s.profiles ?? []).filter((p) => p.id !== id),
+        }));
+        showDeletedToast("Profile");
       },
       toggleProfileStatus: (id) =>
         set((s) => ({
@@ -246,18 +261,27 @@ export const useAppStore = create<AppState>()(
         showAddedToast("Scrap entry");
       },
       addVendor: (vendor) => {
-        set((s) => ({ vendors: [...(s.vendors ?? []), normalizeVendor(vendor)] }));
+        set((s) => ({
+          vendors: prepareVendorList([
+            ...(s.vendors ?? []),
+            normalizeVendor(vendor),
+          ]),
+        }));
       },
       updateVendor: (id, updates) => {
         set((s) => ({
-          vendors: (s.vendors ?? []).map((vendor) =>
-            vendor.id === id ? normalizeVendor({ ...vendor, ...updates }) : vendor
+          vendors: prepareVendorList(
+            (s.vendors ?? []).map((vendor) =>
+              vendor.id === id ? normalizeVendor({ ...vendor, ...updates }) : vendor
+            )
           ),
         }));
       },
       deleteVendor: (id) => {
         set((s) => ({
-          vendors: (s.vendors ?? []).filter((vendor) => vendor.id !== id),
+          vendors: prepareVendorList(
+            (s.vendors ?? []).filter((vendor) => vendor.id !== id)
+          ),
         }));
       },
       upsertVendor: (vendor) => {
@@ -265,14 +289,16 @@ export const useAppStore = create<AppState>()(
           const list = s.vendors ?? [];
           const normalized = normalizeVendor(vendor);
           const hasVendor = list.some((item) => item.id === normalized.id);
+          const next = hasVendor
+            ? list.map((item) => (item.id === normalized.id ? normalized : item))
+            : [...list, normalized];
           return {
-            vendors: hasVendor
-              ? list.map((item) => (item.id === normalized.id ? normalized : item))
-              : [...list, normalized],
+            vendors: prepareVendorList(next),
           };
         });
       },
-      setVendors: (vendors) => set({ vendors: vendors.map(normalizeVendor) }),
+      setVendors: (vendors) =>
+        set({ vendors: prepareVendorList(vendors.map(normalizeVendor)) }),
       addUser: (user) => {
         set((s) => ({
           users: [...(s.users ?? []), user],
@@ -321,11 +347,12 @@ export const useAppStore = create<AppState>()(
       setRolePermissions: (permissions) => set({ rolePermissions: permissions }),
       setUserPermissionOverrides: (overrides) =>
         set({ userPermissionOverrides: overrides }),
-      resetRolePermissions: () => set({ rolePermissions: DEFAULT_ROLE_PERMISSIONS }),
+      resetRolePermissions: () =>
+        set({ rolePermissions: normalizeModuleRolePermissions(DEFAULT_ROLE_PERMISSIONS) }),
     }),
     {
       name: "mags-app-store",
-      version: 51,
+      version: 52,
       skipHydration: true,
       partialize: (state) => ({
         navOrder: state.navOrder,
@@ -334,23 +361,78 @@ export const useAppStore = create<AppState>()(
         rolePermissions: state.rolePermissions,
         userPermissionOverrides: state.userPermissionOverrides,
         vendors: (state.vendors ?? []).map(normalizeVendor),
+        challans: filterVisibleChallans(state.challans ?? []),
         seriesNames: state.seriesNames ?? [],
+        profiles: (state.profiles ?? []).map(normalizeProfile),
+        stockInward: (state.stockInward ?? []).map((entry) =>
+          normalizeStockInwardRecord({
+            ...entry,
+            supplier: normalizeStockInwardSupplier(entry.supplier),
+            dyeCode: entry.dyeCode?.trim() ?? "",
+          })
+        ),
+        deletedStockInwardIds: state.deletedStockInwardIds ?? [],
+        consumption: getManualConsumption(state.consumption ?? []),
+        powderCoating: state.powderCoating ?? [],
+        scrap: state.scrap ?? [],
+        purchaseOrders: state.purchaseOrders ?? [],
+        reports: state.reports ?? [],
         users: (state.users ?? []).map((user) => ({ ...user })),
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<AppState>;
         const mockUserIds = new Set(mockUsers.map((user) => user.id));
+        const mergedChallans = filterVisibleChallans(
+          mergeListsByIdPreferLocal(saved.challans ?? [], current.challans ?? [])
+        );
+        const mergedDeletedStockInwardIds = [
+          ...new Set([
+            ...(saved.deletedStockInwardIds ?? []),
+            ...(current.deletedStockInwardIds ?? []),
+          ]),
+        ];
         return {
           ...current,
           ...saved,
           vendors: mergeVendorLists([], saved.vendors ?? current.vendors ?? []),
+          challans: mergedChallans,
           users: [
             ...mockUsers,
             ...(saved.users ?? current.users ?? []).filter(
               (user) => !mockUserIds.has(user.id)
             ),
           ],
-          seriesNames: saved.seriesNames ?? current.seriesNames ?? [],
+          seriesNames: mergeListsByIdPreferLocal(
+            saved.seriesNames ?? [],
+            current.seriesNames ?? []
+          ),
+          profiles: mergeListsByIdPreferLocal(
+            (saved.profiles ?? []).map(normalizeProfile),
+            (current.profiles ?? []).map(normalizeProfile)
+          ).map(normalizeProfile),
+          stockInward: mergeListsByIdPreferLocal(
+            saved.stockInward ?? [],
+            current.stockInward ?? []
+          ).filter((entry) => !mergedDeletedStockInwardIds.includes(entry.id)),
+          deletedStockInwardIds: mergedDeletedStockInwardIds,
+          consumption: mergeListsByIdPreferLocal(
+            getManualConsumption(saved.consumption ?? []),
+            getManualConsumption(current.consumption ?? [])
+          ),
+          powderCoating: mergeListsByIdPreferLocal(
+            saved.powderCoating ?? [],
+            current.powderCoating ?? []
+          ),
+          scrap: mergeListsByIdPreferLocal(saved.scrap ?? [], current.scrap ?? []),
+          purchaseOrders: mergeListsByIdPreferLocal(
+            saved.purchaseOrders ?? [],
+            current.purchaseOrders ?? []
+          ),
+          reports: mergeListsByIdPreferLocal(saved.reports ?? [], current.reports ?? []),
+          rolePermissions: normalizeModuleRolePermissions(
+            migrateRolePermissions(saved.rolePermissions as Record<string, unknown>)
+          ),
+          userPermissionOverrides: migrateUserPermissionOverrides(saved.userPermissionOverrides),
         };
       },
       migrate: (persisted, fromVersion) => {
@@ -358,9 +440,16 @@ export const useAppStore = create<AppState>()(
           hiddenNavHrefs?: string[];
           seriesNames?: SeriesName[];
           navOrder?: string[] | null;
-          rolePermissions?: Record<string, UserRole[]>;
-          userPermissionOverrides?: UserPermissionOverrides;
+          rolePermissions?: Record<string, unknown>;
+          userPermissionOverrides?: Record<string, Record<string, unknown>>;
         };
+
+        const migratedRolePermissions = normalizeModuleRolePermissions(
+          migrateRolePermissions(state.rolePermissions)
+        );
+        const migratedUserOverrides = migrateUserPermissionOverrides(
+          state.userPermissionOverrides
+        );
 
         if (fromVersion >= 51) {
           const mockVendorIds = new Set(mockVendors.map((vendor) => vendor.id));
@@ -390,13 +479,8 @@ export const useAppStore = create<AppState>()(
               ...DEFAULT_APP_SETTINGS,
               ...(state.settings ?? {}),
             },
-            rolePermissions: {
-              ...DEFAULT_ROLE_PERMISSIONS,
-              ...(state.rolePermissions ?? {}),
-              series:
-                state.rolePermissions?.series ?? DEFAULT_ROLE_PERMISSIONS.series,
-            },
-            userPermissionOverrides: state.userPermissionOverrides ?? {},
+            rolePermissions: migratedRolePermissions,
+            userPermissionOverrides: migratedUserOverrides,
           };
         }
 
@@ -428,13 +512,8 @@ export const useAppStore = create<AppState>()(
               ...DEFAULT_APP_SETTINGS,
               ...(state.settings ?? {}),
             },
-            rolePermissions: {
-              ...DEFAULT_ROLE_PERMISSIONS,
-              ...(state.rolePermissions ?? {}),
-              series:
-                state.rolePermissions?.series ?? DEFAULT_ROLE_PERMISSIONS.series,
-            },
-            userPermissionOverrides: state.userPermissionOverrides ?? {},
+            rolePermissions: migratedRolePermissions,
+            userPermissionOverrides: migratedUserOverrides,
           };
         }
 
@@ -506,13 +585,8 @@ export const useAppStore = create<AppState>()(
           deletedStockInwardIds: clearedInventory ? [] : (rest.deletedStockInwardIds ?? []),
           reports: rest.reports ?? [],
           purchaseOrders: clearedInventory ? [] : (rest.purchaseOrders ?? []),
-          rolePermissions: {
-            ...DEFAULT_ROLE_PERMISSIONS,
-            ...(rest.rolePermissions ?? {}),
-            series:
-              rest.rolePermissions?.series ?? DEFAULT_ROLE_PERMISSIONS.series,
-          },
-          userPermissionOverrides: rest.userPermissionOverrides ?? {},
+          rolePermissions: migratedRolePermissions,
+          userPermissionOverrides: migratedUserOverrides,
         };
       },
     }

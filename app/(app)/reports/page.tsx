@@ -2,20 +2,20 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, FileDown, Trash2, BarChart3, Package, Factory, SprayCan } from "lucide-react";
+import { Eye, FileDown, Trash2, BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
-import { StatCard } from "@/components/shared/stat-card";
 import { DataTable } from "@/components/shared/data-table";
 import { CreateReportDialog } from "@/components/reports/create-report-dialog";
 import { ReportPreviewDialog } from "@/components/reports/report-preview-dialog";
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { fetchJson } from "@/lib/fetch-json";
 import type { ReportApiData } from "@/lib/report-content";
 import { getReportTypeLabel } from "@/lib/report-form";
 import { useAppStore } from "@/lib/store";
+import { useModuleCrud } from "@/hooks/use-module-crud";
 import type { Report } from "@/types";
 
 const ReportChartPanel = dynamic(
@@ -30,6 +30,7 @@ const ReportChartPanel = dynamic(
 );
 
 export default function ReportsPage() {
+  const { canCreate, canRead, canDelete } = useModuleCrud("reports");
   const [data, setData] = useState<Record<string, unknown>>({});
   const [previewReport, setPreviewReport] = useState<Report | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -167,55 +168,63 @@ export default function ReportsPage() {
       sticky: true,
       render: (row: Report) => (
         <TableRowActions>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={chartReport?.id === row.id ? "h-8 w-8 text-primary" : "h-8 w-8"}
-            aria-label="View chart"
-            onClick={() => handleToggleChart(row)}
-          >
-            <BarChart3 className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Preview report"
-            onClick={() => {
-              setPreviewReport(row);
-              setPreviewOpen(true);
-            }}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Download PDF"
-            disabled={downloadingId === row.id}
-            onClick={() => handleDownloadReport(row)}
-          >
-            <FileDown className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            aria-label="Delete report"
-            onClick={() => {
-              if (confirm(`Delete report ${row.reportNo}?`)) {
-                deleteReport(row.id);
-                if (chartReport?.id === row.id) setChartReport(null);
-              }
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {canRead ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={chartReport?.id === row.id ? "h-8 w-8 text-primary" : "h-8 w-8"}
+              aria-label="View chart"
+              onClick={() => handleToggleChart(row)}
+            >
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+          ) : null}
+          {canRead ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Preview report"
+              onClick={() => {
+                setPreviewReport(row);
+                setPreviewOpen(true);
+              }}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          ) : null}
+          {canRead ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Download PDF"
+              disabled={downloadingId === row.id}
+              onClick={() => handleDownloadReport(row)}
+            >
+              <FileDown className="h-4 w-4" />
+            </Button>
+          ) : null}
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              aria-label="Delete report"
+              onClick={() => {
+                if (confirm(`Delete report ${row.reportNo}?`)) {
+                  deleteReport(row.id);
+                  if (chartReport?.id === row.id) setChartReport(null);
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
         </TableRowActions>
       ),
     },
@@ -224,27 +233,10 @@ export default function ReportsPage() {
   return (
     <div>
       <PageHeader title="Reports" description="Analytics and operational reports for management">
-        <CreateReportDialog existingReports={reports ?? []} onSave={addReport} />
+        {canCreate ? (
+          <CreateReportDialog existingReports={reports ?? []} onSave={addReport} />
+        ) : null}
       </PageHeader>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
-        <StatCard
-          title="Total Inward"
-          value={`${formatNumber(summary.totalInwardKg ?? 0)} kg`}
-          icon={Package}
-        />
-        <StatCard
-          title="Total Consumption"
-          value={`${formatNumber(summary.totalConsumptionKg ?? 0)} kg`}
-          icon={Factory}
-        />
-        <StatCard
-          title="Coating Efficiency"
-          value={`${summary.coatingEfficiency ?? 0}%`}
-          icon={SprayCan}
-          variant="success"
-        />
-      </div>
 
       <DataTable
         tableId="reports"

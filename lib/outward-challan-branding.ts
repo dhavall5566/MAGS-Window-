@@ -1,9 +1,11 @@
-import { COMPANY, DELIVERY_CHALLAN } from "@/lib/company";
+import { COMPANY, DELIVERY_CHALLAN, PURCHASE_ORDER } from "@/lib/company";
 import { formatGstNo } from "@/lib/utils";
-import { formatPartyAddress } from "@/lib/vendor";
+import { formatPartyAddress, normalizeVendorType } from "@/lib/vendor";
+import { isMockVendorId } from "@/lib/vendor-merge";
+import { MAGS_OUTWARD_CHALLAN_VENDOR_ID } from "@/lib/vendor-ids";
 import type { OutwardChallan, PowderCoatingChallan, Vendor } from "@/types";
 
-export const MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc";
+export { MAGS_OUTWARD_CHALLAN_VENDOR_ID };
 
 export interface OutwardChallanPdfBranding {
   companyName: string;
@@ -54,7 +56,7 @@ export function getDefaultOutwardChallanVendorId(vendors: Vendor[]): string {
 
 export function getDeliveryChallanFromVendors(vendors: Vendor[]): Vendor[] {
   return vendors
-    .filter((vendor) => vendor.vendorType === "delivery_challan_from")
+    .filter((vendor) => normalizeVendorType(vendor) === "delivery_challan_from")
     .sort((a, b) => a.partyName.localeCompare(b.partyName));
 }
 
@@ -79,21 +81,27 @@ export function findDeliveryChallanFromVendorByName(
   });
 }
 
-/** Auto-select when exactly one delivery challan from vendor exists. */
+/** Default issuer: user-created Delivery Challan From vendors first, then seeded default. */
 export function getDefaultDeliveryChallanFromVendorId(vendors: Vendor[]): string {
   const options = getDeliveryChallanFromVendors(vendors);
-  return options.length === 1 ? options[0].id : "";
+  const userCreated = options.find((vendor) => !isMockVendorId(vendor.id));
+  return userCreated?.id ?? options[0]?.id ?? "";
+}
+
+export function getDeliveryChallanFromDisplayName(vendor: Vendor | undefined): string {
+  if (!vendor) return "";
+  return vendor.challanHeaderName?.trim() || vendor.partyName.trim();
 }
 
 function getDefaultDeliveryChallanPdfBranding(): OutwardChallanPdfBranding {
   return {
-    companyName: DELIVERY_CHALLAN.name,
-    addressLine1: DELIVERY_CHALLAN.addressLine1,
-    addressLine2: DELIVERY_CHALLAN.addressLine2,
-    email: DELIVERY_CHALLAN.email,
-    phone: COMPANY.contact.phone,
-    gstNo: DELIVERY_CHALLAN.gstNo,
-    signatoryLine: DELIVERY_CHALLAN.signatoryLine,
+    companyName: PURCHASE_ORDER.companyName,
+    addressLine1: "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3",
+    addressLine2: "Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
+    email: PURCHASE_ORDER.email,
+    phone: PURCHASE_ORDER.phone,
+    gstNo: "",
+    signatoryLine: "For, MAAHI ALUGLAZE SYSTEM",
     logoUrl: COMPANY.logo,
   };
 }

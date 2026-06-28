@@ -70,3 +70,12 @@ export function generateId(prefix: string): string {
 export function formatGstNo(value: string | undefined | null): string {
   return value?.trim().toUpperCase() ?? "";
 }
+
+const METERS_TO_FEET = 3.280839895;
+
+/** Convert meters to feet for display (e.g. length in powder coating forms). */
+export function metersToFeet(meters: number | undefined | null): number {
+  const value = Number(meters);
+  if (!value || value <= 0 || Number.isNaN(value)) return 0;
+  return Math.round(value * METERS_TO_FEET * 100) / 100;
+}

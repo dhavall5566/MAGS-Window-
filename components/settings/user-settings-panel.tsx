@@ -1,11 +1,11 @@
 "use client";
 
-import { User } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Mail, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { getDefaultUser } from "@/lib/auth";
 import { UserPermissionsCard } from "@/components/settings/user-permissions-card";
+import { SettingsPanel } from "@/components/settings/settings-section";
 
 const ROLE_LABELS: Record<string, string> = {
   administrator: "Administrator",
@@ -18,46 +18,51 @@ export function UserSettingsPanel() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5 text-primary" />
-            Profile
-          </CardTitle>
-          <CardDescription>Your account details in this demo session</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14">
-              <AvatarFallback className="bg-primary text-primary-foreground text-base">
+      <SettingsPanel>
+        <div className="flex flex-col gap-5 border-b border-border/80 bg-muted/20 px-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <Avatar className="h-16 w-16 ring-2 ring-background shadow-sm">
+              <AvatarFallback className="bg-primary text-base font-semibold text-primary-foreground">
                 {user.avatar ?? user.name?.slice(0, 2) ?? "U"}
               </AvatarFallback>
             </Avatar>
-            <div className="min-w-0 space-y-1">
-              <p className="text-lg font-semibold leading-tight">{user.name}</p>
-              <p className="text-sm text-muted-foreground truncate">{user.email}</p>
-              <Badge variant="secondary" className="mt-1">
-                {ROLE_LABELS[user.role ?? ""] ?? user.role}
-              </Badge>
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-lg font-semibold leading-tight">{user.name}</p>
+                <Badge variant="secondary" className="text-[11px] font-medium">
+                  {ROLE_LABELS[user.role ?? ""] ?? user.role}
+                </Badge>
+              </div>
+              <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{user.email}</span>
+              </p>
             </div>
           </div>
 
-          <dl className="grid gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <dl className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="rounded-lg border border-border/70 bg-background px-3.5 py-2.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Department
               </dt>
-              <dd className="mt-0.5 font-medium">{user.department ?? "—"}</dd>
+              <dd className="mt-1 text-sm font-medium">{user.department ?? "—"}</dd>
             </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="rounded-lg border border-border/70 bg-background px-3.5 py-2.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Status
               </dt>
-              <dd className="mt-0.5 font-medium capitalize">{user.status ?? "—"}</dd>
+              <dd className="mt-1 text-sm font-medium capitalize">{user.status ?? "—"}</dd>
             </div>
           </dl>
-        </CardContent>
-      </Card>
+        </div>
+
+        <div className="flex items-center gap-2 border-b border-border/80 px-5 py-3 sm:px-6">
+          <User className="h-4 w-4 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
+            Signed-in session profile. Permission changes below apply organization-wide.
+          </p>
+        </div>
+      </SettingsPanel>
 
       <UserPermissionsCard />
     </div>

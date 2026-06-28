@@ -117,6 +117,14 @@ const hideBelowClass = {
   lg: "hidden lg:table-cell",
 } as const;
 
+/** Keeps column headers visible while scrolling the table body. */
+const STICKY_HEAD_CLASS =
+  "sticky top-0 z-20 bg-muted/95 shadow-[0_1px_0_0_hsl(var(--border))] backdrop-blur supports-[backdrop-filter]:bg-muted/80";
+
+/** Toolbar sticks below the app header when the page scrolls. */
+const STICKY_TOOLBAR_CLASS =
+  "sticky top-16 z-30 border-b bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80";
+
 const SERIAL_COLUMN_KEY = "srNo";
 
 function isColumnSortable<T extends object>(col: Column<T>): boolean {
@@ -434,9 +442,10 @@ export function DataTable<T extends object>({
         styles.head,
         align,
         hideClass,
-        "whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
+        STICKY_HEAD_CLASS,
+        "whitespace-nowrap text-[13px] font-bold uppercase tracking-wide text-foreground/85",
         col.sticky &&
-          "md:bg-muted/60 md:shadow-[-10px_0_16px_-12px_hsl(var(--background)/0.9)]",
+          "sticky top-0 md:right-0 md:z-30 md:shadow-[-10px_0_16px_-12px_hsl(var(--background)/0.9)]",
         col.headerClassName
       );
     }
@@ -470,9 +479,14 @@ export function DataTable<T extends object>({
   );
 
   return (
-    <Card className="overflow-hidden border shadow-sm">
+    <Card className="border shadow-sm">
       {hasToolbar && (
-        <div className="flex flex-col gap-3 border-b bg-muted/25 px-3 py-3 sm:px-4 sm:py-3.5 lg:flex-row lg:items-center lg:justify-between">
+        <div
+          className={cn(
+            "flex flex-col gap-3 px-3 py-3 sm:px-4 sm:py-3.5 lg:flex-row lg:items-center lg:justify-between",
+            STICKY_TOOLBAR_CLASS
+          )}
+        >
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             {filterContent}
             {showResultCount && (
@@ -610,9 +624,10 @@ export function DataTable<T extends object>({
         <p className="border-b bg-muted/15 px-3 py-1.5 text-[11px] text-muted-foreground md:hidden">
           Swipe horizontally to see more columns
         </p>
-        <Table className={cn("min-w-full", tableClassName)}>
-          <TableHeader>
-            <TableRow className="border-b bg-muted/40 hover:bg-muted/40">
+        <div className="relative max-h-[min(70vh,calc(100dvh-13rem))] overflow-auto">
+          <Table className={cn("min-w-full", tableClassName)}>
+          <TableHeader className="[&_tr]:border-0">
+            <TableRow className="border-0 hover:bg-transparent">
               {visibleColumns.map((col) => {
                 const sortable = isColumnSortable(col);
                 const isActive = sort?.key === col.key;
@@ -723,6 +738,7 @@ export function DataTable<T extends object>({
             )}
           </TableBody>
         </Table>
+        </div>
       </CardContent>
       {pagination && sorted.length > 0 && (
         <div className="flex flex-col gap-3 border-t bg-muted/20 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between">

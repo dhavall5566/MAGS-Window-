@@ -25,6 +25,7 @@ import {
 import { mergeStockInward } from "@/lib/stock-master";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import { useModuleCrud } from "@/hooks/use-module-crud";
 import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
 import { useAppStore } from "@/lib/store";
 import type { Profile, StockInward } from "@/types";
@@ -59,6 +60,7 @@ const selectStoreProfiles = (state: ReturnType<typeof useAppStore.getState>) =>
   state.profiles ?? [];
 
 export default function StockInwardPage() {
+  const { canCreate, canUpdate, canDelete } = useModuleCrud("stock");
   const storeInward = useAppStore((s) => s.stockInward);
   const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
   const addStockInward = useAppStore((s) => s.addStockInward);
@@ -393,11 +395,13 @@ export default function StockInwardPage() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onSplit={handleOpenSplit}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
           />
         ),
       },
     ],
-    [handleEdit, handleDelete, handleOpenSplit, profileByCode]
+    [canDelete, canUpdate, handleEdit, handleDelete, handleOpenSplit, profileByCode]
   );
 
   return (
@@ -406,12 +410,14 @@ export default function StockInwardPage() {
         title="Stock Inward"
         description="Record and track incoming aluminium profile stock"
       >
-        <AddStockInwardDialog
-          profiles={profiles}
-          vendors={vendors}
-          existingInward={inward}
-          onSave={handleAddStock}
-        />
+        {canCreate ? (
+          <AddStockInwardDialog
+            profiles={profiles}
+            vendors={vendors}
+            existingInward={inward}
+            onSave={handleAddStock}
+          />
+        ) : null}
       </PageHeader>
       <DataTable
         tableId="stock-inward"

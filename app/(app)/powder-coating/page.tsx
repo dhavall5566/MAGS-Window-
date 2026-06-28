@@ -7,9 +7,16 @@ import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { PowderCoatingRowActions } from "@/components/powder-coating/powder-coating-row-actions";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { syncListCache } from "@/lib/list-cache-sync";
+import {
+  createPowderCoatingApi,
+  deletePowderCoatingApi,
+  updatePowderCoatingApi,
+} from "@/lib/powder-coating-api";
 import { mergeProfiles } from "@/lib/profile";
 import { useAppStore } from "@/lib/store";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import { useModuleCrud } from "@/hooks/use-module-crud";
 import type { PowderCoating } from "@/types";
 
 const selectStoreProfiles = (state: ReturnType<typeof useAppStore.getState>) =>
@@ -32,6 +39,7 @@ const EditPowderCoatingDialog = dynamic(
 );
 
 export default function PowderCoatingPage() {
+  const { canCreate, canUpdate, canDelete } = useModuleCrud("coating");
   const [apiProfiles, setApiProfiles] = useCachedOrStoreList(
     "/api/profiles",
     "profiles",
@@ -74,17 +82,69 @@ export default function PowderCoatingPage() {
   }, []);
 
   const handleDelete = useCallback(
-    (entry: PowderCoating) => {
+    async (entry: PowderCoating) => {
       if (!confirm(`Delete powder coating batch ${entry.batchNo}?`)) return;
       deletePowderCoating(entry.id);
+      syncListCache(
+        "/api/powder-coating",
+        "powderCoating",
+        useAppStore.getState().powderCoating ?? []
+      );
+      const ok = await deletePowderCoatingApi(entry.id);
+      if (!ok) {
+        addPowderCoating(entry);
+        syncListCache(
+          "/api/powder-coating",
+          "powderCoating",
+          useAppStore.getState().powderCoating ?? []
+        );
+        alert("Could not delete powder coating entry. Please check that the backend is running.");
+      }
     },
-    [deletePowderCoating]
+    [addPowderCoating, deletePowderCoating]
+  );
+
+  const handleAdd = useCallback(
+    async (entry: PowderCoating) => {
+      addPowderCoating(entry);
+      syncListCache(
+        "/api/powder-coating",
+        "powderCoating",
+        useAppStore.getState().powderCoating ?? []
+      );
+      const saved = await createPowderCoatingApi(entry);
+      if (saved) {
+        updatePowderCoating(saved.id, saved);
+        syncListCache(
+          "/api/powder-coating",
+          "powderCoating",
+          useAppStore.getState().powderCoating ?? []
+        );
+      }
+    },
+    [addPowderCoating, updatePowderCoating]
   );
 
   const handleUpdate = useCallback(
-    (entry: PowderCoating) => {
+    async (entry: PowderCoating) => {
       const { id, ...updates } = entry;
       updatePowderCoating(id, updates);
+      syncListCache(
+        "/api/powder-coating",
+        "powderCoating",
+        useAppStore.getState().powderCoating ?? []
+      );
+      const saved = await updatePowderCoatingApi(id, updates);
+      if (saved) {
+        updatePowderCoating(saved.id, saved);
+        syncListCache(
+          "/api/powder-coating",
+          "powderCoating",
+          useAppStore.getState().powderCoating ?? []
+        );
+      }
+      setEditOpen(false);
+      setEditingEntry(null);
     },
     [updatePowderCoating]
   );
@@ -160,11 +220,13 @@ export default function PowderCoatingPage() {
             entry={row}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
           />
         ),
       },
     ],
-    [handleEdit, handleDelete]
+    [canDelete, canUpdate, handleEdit, handleDelete]
   );
 
   return (
@@ -173,11 +235,13 @@ export default function PowderCoatingPage() {
         title="Powder Coating"
         description="Manage profiles sent for powder coating"
       >
-        <AddPowderCoatingDialog
-          profiles={profiles}
-          vendors={vendors ?? []}
-          onSave={addPowderCoating}
-        />
+        {canCreate ? (
+          <AddPowderCoatingDialog
+            profiles={profiles}
+            vendors={vendors ?? []}
+            onSave={handleAdd}
+          />
+        ) : null}
       </PageHeader>
       <DataTable
         tableId="powder-coating"

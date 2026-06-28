@@ -1,6 +1,9 @@
 import type { Vendor, VendorType } from "@/types";
-import { COMPANY, DELIVERY_CHALLAN } from "@/lib/company";
-import { MAGS_OUTWARD_CHALLAN_VENDOR_ID } from "@/lib/outward-challan-branding";
+import { COMPANY, DELIVERY_CHALLAN, PURCHASE_ORDER } from "@/lib/company";
+import {
+  MAGS_OUTWARD_CHALLAN_VENDOR_ID,
+  MAAHI_POWDER_COATING_VENDOR_ID,
+} from "@/lib/vendor-ids";
 
 const vendorRows: Pick<
   Vendor,
@@ -28,6 +31,19 @@ const vendorRows: Pick<
     challanEmail: DELIVERY_CHALLAN.email,
     challanPhone: COMPANY.contact.phone,
     challanSignatoryLine: DELIVERY_CHALLAN.signatoryLine,
+  },
+  {
+    id: MAAHI_POWDER_COATING_VENDOR_ID,
+    partyName: "MAAHI ALUGLAZE SYSTEM",
+    partyAddress: PURCHASE_ORDER.addressLine,
+    vendorType: "outward_challan",
+    gstNo: "24BHUPP0334A1ZM",
+    challanHeaderName: PURCHASE_ORDER.companyName,
+    challanAddressLine1: "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3",
+    challanAddressLine2: "Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
+    challanEmail: "brij.prajapati07@gmail.com",
+    challanPhone: "9974293086",
+    challanSignatoryLine: "For, MAAHI ALUGLAZE SYSTEM",
   },
   {
     id: "ven-001",
@@ -206,10 +222,30 @@ const vendorRows: Pick<
   },
 ];
 
-export const mockVendors: Vendor[] = vendorRows.map((vendor) => ({
-  ...vendor,
-  personName: vendor.id === "ven-021" ? COMPANY.contact.name : "",
-  phoneNo: vendor.id === "ven-021" ? COMPANY.contact.phone : "",
-  email: vendor.id === "ven-021" ? COMPANY.contact.email : "",
-  gstNo: vendor.gstNo ?? "",
-}));
+export const mockVendors: Vendor[] = vendorRows.map((vendor) => {
+  if (vendor.id === "ven-021") {
+    return {
+      ...vendor,
+      personName: COMPANY.contact.name,
+      phoneNo: COMPANY.contact.phone,
+      email: COMPANY.contact.email,
+      gstNo: vendor.gstNo ?? "",
+    };
+  }
+  if (vendor.id === MAAHI_POWDER_COATING_VENDOR_ID) {
+    return {
+      ...vendor,
+      personName: "Brijesh Prajapati",
+      phoneNo: "9974293086",
+      email: "brij.prajapati07@gmail.com",
+      gstNo: vendor.gstNo ?? "",
+    };
+  }
+  return {
+    ...vendor,
+    personName: "",
+    phoneNo: "",
+    email: "",
+    gstNo: vendor.gstNo ?? "",
+  };
+});

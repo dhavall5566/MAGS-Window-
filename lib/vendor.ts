@@ -3,8 +3,8 @@ import { VENDOR_TYPE_OPTIONS } from "@/lib/vendor-form";
 import { formatGstNo } from "@/lib/utils";
 import {
   isMagsOutwardChallanIssuer,
-  MAGS_OUTWARD_CHALLAN_VENDOR_ID,
 } from "@/lib/outward-challan-branding";
+import { MAGS_OUTWARD_CHALLAN_VENDOR_ID, MAAHI_POWDER_COATING_VENDOR_ID } from "@/lib/vendor-ids";
 
 export const MAGS_VENDOR_ID = "ven-021";
 
@@ -21,7 +21,14 @@ export function resolveVendorType(
   return "delivery";
 }
 
-/** Only the MAGS OC issuer keeps outward_challan; other parties are outward challan vendors. */
+/** Keep in sync with DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX in vendor-merge.ts */
+const DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX = "-powder-coating-mirror";
+
+export function isDeliveryChallanFromPowderCoatingMirrorId(id: string): boolean {
+  return id.endsWith(DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX);
+}
+
+/** Only the MAGS OC issuer keeps outward_challan; delivery-challan-from mirrors keep it too. */
 export function normalizeVendorType(
   vendor: Pick<Vendor, "id" | "partyName" | "vendorType">
 ): VendorType {
@@ -29,7 +36,9 @@ export function normalizeVendorType(
   if (
     resolved === "outward_challan" &&
     vendor.id !== MAGS_OUTWARD_CHALLAN_VENDOR_ID &&
-    !isMagsOutwardChallanIssuer(vendor)
+    vendor.id !== MAAHI_POWDER_COATING_VENDOR_ID &&
+    !isMagsOutwardChallanIssuer(vendor) &&
+    !isDeliveryChallanFromPowderCoatingMirrorId(vendor.id)
   ) {
     return "delivery";
   }

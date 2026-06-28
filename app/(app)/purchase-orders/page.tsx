@@ -16,6 +16,7 @@ import {
 import { formatDate, formatGstNo, formatNumber } from "@/lib/utils";
 import { getCachedJson } from "@/lib/fetch-json";
 import { useCachedApiList } from "@/hooks/use-cached-api-list";
+import { syncListCache } from "@/lib/list-cache-sync";
 import { mergeProfiles } from "@/lib/profile";
 import { getPurchaseOrderTotalWeight, resolvePurchaseOrderItemWeight } from "@/lib/purchase-order-form";
 import { showDeletedToast } from "@/lib/toast";
@@ -160,7 +161,7 @@ export default function PurchaseOrdersPage() {
       getStoreFallback: () => useAppStore.getState().profiles ?? [],
     }
   );
-  const { apiItems: apiOrders, isLoading } = useCachedApiList<
+  const { apiItems: apiOrders, isLoading, setApiItems: setApiOrders } = useCachedApiList<
     PurchaseOrder,
     "purchaseOrders"
   >("/api/purchase-orders", "purchaseOrders", {
@@ -186,21 +187,33 @@ export default function PurchaseOrdersPage() {
   const handleCreate = useCallback(
     async (order: PurchaseOrder) => {
       addPurchaseOrder(order);
+      const nextOrders = useAppStore.getState().purchaseOrders ?? [];
+      syncListCache("/api/purchase-orders", "purchaseOrders", nextOrders);
+      setApiOrders(mergePurchaseOrders(apiOrders, nextOrders));
 
       const saved = await createPurchaseOrderApi(order);
       if (!saved) {
         deletePurchaseOrder(order.id);
+        const restored = useAppStore.getState().purchaseOrders ?? [];
+        syncListCache("/api/purchase-orders", "purchaseOrders", restored);
+        setApiOrders(mergePurchaseOrders(apiOrders, restored));
         alert("Could not save purchase order. Please check that the backend is running.");
         return;
       }
       replacePurchaseOrder(saved);
+      const merged = useAppStore.getState().purchaseOrders ?? [];
+      syncListCache("/api/purchase-orders", "purchaseOrders", merged);
+      setApiOrders(mergePurchaseOrders(apiOrders, merged));
     },
-    [addPurchaseOrder, replacePurchaseOrder, deletePurchaseOrder]
+    [addPurchaseOrder, replacePurchaseOrder, deletePurchaseOrder, apiOrders, setApiOrders]
   );
 
   const handleUpdate = useCallback(
     async (order: PurchaseOrder) => {
       replacePurchaseOrder(order);
+      const nextOrders = useAppStore.getState().purchaseOrders ?? [];
+      syncListCache("/api/purchase-orders", "purchaseOrders", nextOrders);
+      setApiOrders(mergePurchaseOrders(apiOrders, nextOrders));
 
       const saved = await updatePurchaseOrderApi(order);
       if (!saved) {
@@ -208,10 +221,13 @@ export default function PurchaseOrdersPage() {
         return;
       }
       replacePurchaseOrder(saved);
+      const merged = useAppStore.getState().purchaseOrders ?? [];
+      syncListCache("/api/purchase-orders", "purchaseOrders", merged);
+      setApiOrders(mergePurchaseOrders(apiOrders, merged));
       setEditOpen(false);
       setEditingOrder(null);
     },
-    [replacePurchaseOrder]
+    [replacePurchaseOrder, apiOrders, setApiOrders]
   );
 
   const handleDelete = useCallback(
@@ -219,13 +235,20 @@ export default function PurchaseOrdersPage() {
       if (!confirm(`Delete purchase order ${order.poNumber}?`)) return;
       showDeletedToast("Purchase order");
       deletePurchaseOrder(order.id);
+      const nextOrders = useAppStore.getState().purchaseOrders ?? [];
+      syncListCache("/api/purchase-orders", "purchaseOrders", nextOrders);
+      setApiOrders(mergePurchaseOrders(apiOrders, nextOrders));
 
       const ok = await deletePurchaseOrderApi(order.id);
       if (!ok) {
+        addPurchaseOrder(order);
+        const restored = useAppStore.getState().purchaseOrders ?? [];
+        syncListCache("/api/purchase-orders", "purchaseOrders", restored);
+        setApiOrders(mergePurchaseOrders(apiOrders, restored));
         alert("Could not delete purchase order. Please check that the backend is running.");
       }
     },
-    [deletePurchaseOrder]
+    [deletePurchaseOrder, addPurchaseOrder, apiOrders, setApiOrders]
   );
 
   const handleDownload = useCallback(

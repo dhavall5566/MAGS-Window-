@@ -63,3 +63,28 @@ export function seriesLabelToSeriesName(label: string, index: number): SeriesNam
 export function deriveSeriesNamesFromProfiles(profiles: Profile[]): SeriesName[] {
   return getUniqueProfileSeries(profiles).map(seriesLabelToSeriesName);
 }
+
+export function countProfilesForSeries(
+  series: Pick<SeriesName, "name" | "seriesNo" | "seriesSuffix">,
+  profiles: Profile[]
+): number {
+  const label = getSeriesLabel(series);
+  return profiles.filter((profile) => (profile.seriesName?.trim() ?? "") === label).length;
+}
+
+export function seriesHasLinkedProfiles(
+  series: Pick<SeriesName, "name" | "seriesNo" | "seriesSuffix">,
+  profiles: Profile[]
+): boolean {
+  return countProfilesForSeries(series, profiles) > 0;
+}
+
+export function resolveSeriesProfileCount(
+  series: SeriesName,
+  profiles: Profile[]
+): number {
+  if (profiles.length > 0) {
+    return countProfilesForSeries(series, profiles);
+  }
+  return series.profileCount ?? 0;
+}

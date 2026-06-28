@@ -26,6 +26,8 @@ export interface SeriesName {
   seriesSuffix?: string;
   status: "active" | "inactive";
   createdAt: string;
+  /** Profiles in Profile Master linked to this series (computed from DB). */
+  profileCount?: number;
 }
 
 export interface Profile {

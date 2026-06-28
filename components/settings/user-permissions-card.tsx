@@ -1,22 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Shield, RotateCcw, Search } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { RotateCcw, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CrudPermissionSwitch } from "@/components/settings/crud-permission-checks";
+import { SettingsPanel, SettingsSection } from "@/components/settings/settings-section";
 import { useAppStore } from "@/lib/store";
 import {
+  CRUD_ACTIONS,
+  CRUD_ACTION_LABELS,
+  CRUD_ACTION_TITLES,
   PERMISSION_AREAS,
   ROLE_LABELS,
   clearUserPermissionOverrides,
-  getRoleDefaultAccess,
-  isPermissionEnabledForUser,
-  toggleUserPermissionOverride,
+  countEnabledModulesForUser,
+  getEffectiveCrudForUser,
+  getRoleDefaultCrud,
+  hasCustomUserOverrides,
+  isUserCrudOverride,
+  setUserCrudOverride,
+  type CrudAction,
 } from "@/lib/role-permissions";
 import { cn } from "@/lib/utils";
 
@@ -57,18 +70,19 @@ export function UserPermissionsCard() {
 
   const selectedUser = filteredUsers.find((user) => user.id === selectedUserId) ?? null;
 
-  const handleToggle = (
+  const handleCrudChange = (
     userId: string,
-    role: (typeof sortedUsers)[number]["role"],
     permKey: string,
-    enabled: boolean
+    action: CrudAction,
+    enabled: boolean,
+    roleDefault: ReturnType<typeof getRoleDefaultCrud>
   ) => {
-    const roleDefault = getRoleDefaultAccess(role, permKey, rolePermissions);
     setUserPermissionOverrides(
-      toggleUserPermissionOverride(
+      setUserCrudOverride(
         userPermissionOverrides,
         userId,
         permKey,
+        action,
         enabled,
         roleDefault
       )
@@ -79,188 +93,238 @@ export function UserPermissionsCard() {
     setUserPermissionOverrides(clearUserPermissionOverrides(userPermissionOverrides, userId));
   };
 
-  const hasCustomOverrides = (userId: string) =>
-    Boolean(userPermissionOverrides[userId] && Object.keys(userPermissionOverrides[userId]).length > 0);
+  const selectedStats = useMemo(() => {
+    if (!selectedUser) return null;
 
-  const getEnabledCount = (user: (typeof sortedUsers)[number]) =>
-    PERMISSION_AREAS.filter((area) =>
-      isPermissionEnabledForUser(user, area.key, rolePermissions, userPermissionOverrides)
+    const enabledCount = countEnabledModulesForUser(
+      selectedUser,
+      rolePermissions,
+      userPermissionOverrides
+    );
+    const overrideCount = PERMISSION_AREAS.filter((area) =>
+      isUserCrudOverride(
+        userPermissionOverrides,
+        selectedUser.id,
+        area.key,
+        getRoleDefaultCrud(selectedUser.role, area.key, rolePermissions)
+      )
     ).length;
 
-  return (
-    <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-primary" />
-          User Permissions
-        </CardTitle>
-        <CardDescription>
-          Select a user, then toggle module access. Changes apply when that user signs in.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <div className="w-full shrink-0 space-y-2 lg:w-64">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search users..."
-                className="h-9 pl-8"
-              />
-            </div>
-            <div className="max-h-[min(420px,50vh)] overflow-y-auto rounded-lg border bg-muted/20 p-1">
-              {filteredUsers.length === 0 ? (
-                <p className="px-3 py-6 text-center text-sm text-muted-foreground">No users found</p>
-              ) : (
-                filteredUsers.map((user) => {
-                  const isSelected = user.id === selectedUserId;
-                  const customOverrides = hasCustomOverrides(user.id);
-                  const enabledCount = getEnabledCount(user);
+    return { enabledCount, overrideCount };
+  }, [rolePermissions, selectedUser, userPermissionOverrides]);
 
-                  return (
-                    <button
-                      key={user.id}
-                      type="button"
-                      onClick={() => setSelectedUserId(user.id)}
-                      className={cn(
-                        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
-                        isSelected
-                          ? "bg-primary/10 ring-1 ring-primary/25"
-                          : "hover:bg-muted/60"
-                      )}
-                    >
-                      <Avatar className="h-8 w-8 shrink-0">
-                        <AvatarFallback className="bg-primary/15 text-primary text-xs">
-                          {user.avatar ?? user.name.slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium leading-tight">{user.name}</p>
-                        <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        <span className="text-[10px] font-medium text-muted-foreground">
-                          {enabledCount}/{PERMISSION_AREAS.length}
-                        </span>
-                        {customOverrides ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Custom permissions" />
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+  const isAdmin = selectedUser?.role === "administrator";
+
+  return (
+    <SettingsPanel>
+      <SettingsSection
+        first
+        title="User permission overrides"
+        description="Configure module-level create, read, update, and delete access per user. Changes apply on top of role defaults."
+        contentClassName="space-y-0 p-0"
+      >
+        <div className="flex flex-col gap-3 border-b border-border/80 bg-muted/20 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:px-6">
+          <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filter users..."
+              className="h-10 border-border/80 bg-background pl-9"
+            />
           </div>
 
-          <div className="min-w-0 flex-1 rounded-lg border bg-muted/10 p-4">
-            {!selectedUser ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                Select a user to manage permissions
-              </p>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar className="h-10 w-10 shrink-0">
-                      <AvatarFallback className="bg-primary/15 text-primary text-sm">
-                        {selectedUser.avatar ?? selectedUser.name.slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="font-medium leading-tight truncate">{selectedUser.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{selectedUser.email}</p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {ROLE_LABELS[selectedUser.role]}
-                        </Badge>
-                        {selectedUser.status === "inactive" ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                            Inactive
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
+          <Select
+            value={selectedUserId ?? undefined}
+            onValueChange={setSelectedUserId}
+            disabled={filteredUsers.length === 0}
+          >
+            <SelectTrigger className="h-10 min-w-[240px] flex-1 border-border/80 bg-background sm:max-w-sm">
+              <SelectValue placeholder="Select a user" />
+            </SelectTrigger>
+            <SelectContent>
+              {filteredUsers.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  <span className="font-medium">{user.name}</span>
+                  <span className="ml-2 text-muted-foreground">· {ROLE_LABELS[user.role]}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-                  {selectedUser.role === "administrator" ? (
-                    <span className="text-xs text-muted-foreground shrink-0">Full access</span>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      disabled={!hasCustomOverrides(selectedUser.id)}
-                      onClick={() => handleResetUser(selectedUser.id)}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Reset defaults
-                    </Button>
-                  )}
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            {selectedStats ? (
+              <>
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {selectedStats.enabledCount}/{PERMISSION_AREAS.length} modules
+                </span>
+                {selectedStats.overrideCount > 0 ? (
+                  <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary">
+                    {selectedStats.overrideCount} override
+                    {selectedStats.overrideCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+
+            {selectedUser && !isAdmin ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!hasCustomUserOverrides(userPermissionOverrides, selectedUser.id)}
+                onClick={() => handleResetUser(selectedUser.id)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset defaults
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {!selectedUser ? (
+          <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+            <Users className="mb-3 h-10 w-10 text-muted-foreground/50" />
+            <p className="text-sm font-medium text-foreground">No users match your filter</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Adjust search or add users from User Management.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-4 border-b border-border/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar className="h-11 w-11 shrink-0 ring-2 ring-background">
+                  <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
+                    {selectedUser.avatar ?? selectedUser.name.slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{selectedUser.name}</p>
+                  <p className="truncate text-sm text-muted-foreground">{selectedUser.email}</p>
                 </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">{ROLE_LABELS[selectedUser.role]}</Badge>
+                {selectedUser.status === "inactive" ? (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    Inactive
+                  </Badge>
+                ) : null}
+                {isAdmin ? (
+                  <Badge className="bg-emerald-600/90 hover:bg-emerald-600/90">Full access</Badge>
+                ) : null}
+              </div>
+            </div>
 
-                <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
-                  {PERMISSION_AREAS.map((area) => {
-                    const isAdmin = selectedUser.role === "administrator";
-                    const enabled = isPermissionEnabledForUser(
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-wide text-foreground/80 sm:px-6">
+                      Module
+                    </th>
+                    {CRUD_ACTIONS.map((action) => (
+                      <th
+                        key={action}
+                        className="w-[88px] px-3 py-3 text-center text-[12px] font-bold uppercase tracking-wide text-foreground/80"
+                        title={CRUD_ACTION_TITLES[action]}
+                      >
+                        {CRUD_ACTION_LABELS[action]}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PERMISSION_AREAS.map((area, index) => {
+                    const roleDefault = getRoleDefaultCrud(
+                      selectedUser.role,
+                      area.key,
+                      rolePermissions
+                    );
+                    const effective = getEffectiveCrudForUser(
                       selectedUser,
                       area.key,
                       rolePermissions,
                       userPermissionOverrides
                     );
-                    const roleDefault = getRoleDefaultAccess(
-                      selectedUser.role,
+                    const isOverride = isUserCrudOverride(
+                      userPermissionOverrides,
+                      selectedUser.id,
                       area.key,
-                      rolePermissions
+                      roleDefault
                     );
-                    const isOverride =
-                      !isAdmin &&
-                      userPermissionOverrides[selectedUser.id]?.[area.key] !== undefined;
 
                     return (
-                      <div
+                      <tr
                         key={area.key}
                         className={cn(
-                          "flex items-center justify-between gap-2 rounded-md border bg-background/70 px-2.5 py-2",
-                          isOverride && "border-primary/30 bg-primary/5"
+                          index % 2 === 0 ? "bg-background" : "bg-muted/10",
+                          isOverride && "bg-primary/[0.035]"
                         )}
-                        title={area.description}
                       >
-                        <Label
-                          htmlFor={`${selectedUser.id}-${area.key}`}
-                          className="min-w-0 truncate text-sm font-medium leading-none"
-                        >
-                          {area.label}
-                          {isOverride ? (
-                            <span className="ml-1 text-[10px] font-normal text-primary">
-                              · custom
-                            </span>
-                          ) : null}
-                        </Label>
-                        <Switch
-                          id={`${selectedUser.id}-${area.key}`}
-                          checked={enabled}
-                          disabled={isAdmin}
-                          className="shrink-0"
-                          onCheckedChange={(checked) =>
-                            handleToggle(selectedUser.id, selectedUser.role, area.key, checked)
-                          }
-                          aria-label={`${area.label} access for ${selectedUser.name}${
-                            isOverride ? `, role default ${roleDefault ? "on" : "off"}` : ""
-                          }`}
-                        />
-                      </div>
+                        <td className="border-t border-border/60 px-4 py-3.5 sm:px-6">
+                          <div className="flex items-start gap-2">
+                            {isOverride ? (
+                              <span
+                                className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"
+                                title="Custom override"
+                              />
+                            ) : (
+                              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-transparent" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">{area.label}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{area.description}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {CRUD_ACTIONS.map((action) => (
+                          <td
+                            key={action}
+                            className="border-t border-border/60 px-3 py-3.5 text-center align-middle"
+                          >
+                            <div className="flex justify-center">
+                              <CrudPermissionSwitch
+                                id={`${selectedUser.id}-${area.key}-${action}`}
+                                action={action}
+                                permissions={effective}
+                                disabled={isAdmin}
+                                onChange={(changedAction, enabled) =>
+                                  handleCrudChange(
+                                    selectedUser.id,
+                                    area.key,
+                                    changedAction,
+                                    enabled,
+                                    roleDefault
+                                  )
+                                }
+                              />
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
                     );
                   })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border/80 bg-muted/15 px-4 py-3 text-[11px] text-muted-foreground sm:px-6">
+              {CRUD_ACTIONS.map((action) => (
+                <span key={action}>
+                  <strong className="font-semibold text-foreground/85">
+                    {CRUD_ACTION_LABELS[action]}
+                  </strong>
+                  <span className="mx-1.5 text-border">·</span>
+                  {CRUD_ACTION_TITLES[action]}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </SettingsSection>
+    </SettingsPanel>
   );
 }

@@ -2,7 +2,10 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { fetchJson, getCachedJson } from "@/lib/fetch-json";
+import { mergeChallans } from "@/lib/challan-consumption";
+import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
 import { useAppStore } from "@/lib/store";
+import type { Challan } from "@/types";
 
 type StoreState = ReturnType<typeof useAppStore.getState>;
 
@@ -75,9 +78,22 @@ export function useCachedOrStoreList<T, K extends string>(
     void fetchJson<Record<K, T[] | undefined>>(url).then((data) => {
       if (cancelled) return;
       const mapper = mapItemRef.current;
-      const next = (data?.[listKey] ?? []).map((item) =>
+      const remote = (data?.[listKey] ?? []).map((item) =>
         mapper ? mapper(item) : item
       );
+      const local = storeSelectorRef.current(useAppStore.getState()) ?? [];
+      let next: T[] = remote;
+      if (url === "/api/challans" && listKey === "challans") {
+        next = mergeChallans(
+          remote as Challan[],
+          local as Challan[]
+        ) as T[];
+      } else if (local.length > 0) {
+        next = mergeListsByIdPreferLocal(
+          remote as Array<T & { id: string }>,
+          local as Array<T & { id: string }>
+        );
+      }
       setItems((prev) => (areListsEqual(prev, next) ? prev : next));
     });
 

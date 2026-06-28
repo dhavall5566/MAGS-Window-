@@ -11,11 +11,19 @@ import { ProfileImagePreviewDialog } from "@/components/profiles/profile-image-p
 import { ProfilePriceHistoryDialog } from "@/components/profiles/profile-price-history-dialog";
 import { ProfileRowActions } from "@/components/profiles/profile-row-actions";
 import { Badge } from "@/components/ui/badge";
-import { fetchJson } from "@/lib/fetch-json";
 import { useCachedApiList } from "@/hooks/use-cached-api-list";
+import { useModuleCrud } from "@/hooks/use-module-crud";
+import { syncListCache } from "@/lib/list-cache-sync";
+import {
+  createProfileApi,
+  deleteProfileApi,
+  updateProfileApi,
+  upsertProfileApi,
+} from "@/lib/profile-api";
 import {
   getProfileCodeValue,
   getProfileDesignImage,
+  getProfileDisplayName,
   getProfileDyeCode,
   getProfileWeightPerMeter,
   getProfileStatusLabel,
@@ -41,8 +49,11 @@ function mergeProfileLists(apiProfiles: Profile[], storeProfiles: Profile[]): Pr
 }
 
 export default function ProfilesPage() {
+  const { canCreate, canUpdate, canDelete } = useModuleCrud("profiles");
   const addProfile = useAppStore((s) => s.addProfile);
   const updateProfile = useAppStore((s) => s.updateProfile);
+  const deleteProfile = useAppStore((s) => s.deleteProfile);
+  const setProfiles = useAppStore((s) => s.setProfiles);
   const toggleProfileStatus = useAppStore((s) => s.toggleProfileStatus);
   const storeProfiles = useAppStore((s) => s.profiles);
   const { apiItems: apiProfiles, isLoading } = useCachedApiList<
@@ -68,9 +79,79 @@ export default function ProfilesPage() {
   const { filterContent, filtersActive, clearFilters, matchesProfile } =
     useProfileFilters(profiles);
 
-  const handleAddProfile = (profile: Profile) => {
-    addProfile(profile);
-  };
+  const handleAddProfile = useCallback(
+    async (profile: Profile) => {
+      addProfile(profile);
+      syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+      const saved = await createProfileApi(profile);
+      if (saved) {
+        updateProfile(saved.id, saved);
+        syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+      }
+    },
+    [addProfile, updateProfile]
+  );
+
+  const handleUpdateProfile = useCallback(
+    async (id: string, updates: Partial<Profile>) => {
+      const current =
+        profiles.find((profile) => profile.id === id) ??
+        (useAppStore.getState().profiles ?? []).find((profile) => profile.id === id);
+      if (!current) return;
+
+      const nextProfile = normalizeProfile({ ...current, ...updates });
+      updateProfile(id, updates);
+      syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+      const saved = await upsertProfileApi(nextProfile);
+      if (saved) {
+        updateProfile(saved.id, saved);
+        syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+      }
+    },
+    [profiles, updateProfile]
+  );
+
+  const handleToggleStatus = useCallback(
+    async (id: string) => {
+      const current =
+        profiles.find((profile) => profile.id === id) ??
+        (useAppStore.getState().profiles ?? []).find((profile) => profile.id === id);
+      if (!current) return;
+      const nextStatus = current.status === "active" ? "inactive" : "active";
+      const nextProfile = normalizeProfile({ ...current, status: nextStatus });
+
+      toggleProfileStatus(id);
+      syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+      const saved = await upsertProfileApi(nextProfile);
+      if (!saved) {
+        toggleProfileStatus(id);
+        syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+        alert("Could not update profile status. Please check that the backend is running.");
+      } else {
+        updateProfile(saved.id, saved);
+        syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+      }
+    },
+    [profiles, toggleProfileStatus, updateProfile]
+  );
+
+  const handleDeleteProfile = useCallback(
+    async (profile: Profile) => {
+      const label = getProfileDisplayName(profile) || profile.name || profile.code;
+      if (!confirm(`Delete profile ${label}? This cannot be undone.`)) return;
+
+      deleteProfile(profile.id);
+      syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+
+      const ok = await deleteProfileApi(profile.id);
+      if (!ok) {
+        setProfiles([...(useAppStore.getState().profiles ?? []), profile]);
+        syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+        alert("Could not delete profile. Please check that the backend is running.");
+      }
+    },
+    [deleteProfile, setProfiles]
+  );
 
   const handleEdit = useCallback((row: Profile) => {
     setEditingProfile(row);
@@ -96,16 +177,6 @@ export default function ProfilesPage() {
     return name.includes(q) || code.includes(q) || dyeCode.includes(q);
   }, []);
 
-  const handleUpdateProfile = (id: string, updates: Partial<Profile>) => {
-    updateProfile(id, updates);
-  };
-
-  const handleToggleStatus = useCallback(
-    (id: string) => {
-      toggleProfileStatus(id);
-    },
-    [toggleProfileStatus]
-  );
 
   const filteredProfiles = useMemo(
     () => profiles.filter(matchesProfile),
@@ -240,11 +311,14 @@ export default function ProfilesPage() {
             onEdit={handleEdit}
             onPriceHistory={handlePriceHistory}
             onToggleStatus={handleToggleStatus}
+            onDelete={handleDeleteProfile}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
           />
         ),
       },
     ],
-    [handleEdit, handleImagePreview, handlePriceHistory, handleToggleStatus]
+    [canDelete, canUpdate, handleDeleteProfile, handleEdit, handleImagePreview, handlePriceHistory, handleToggleStatus]
   );
 
   return (
@@ -253,7 +327,9 @@ export default function ProfilesPage() {
         title="Profile Master"
         description="Manage aluminium extrusion profile specifications"
       >
-        <AddProfileDialog existingProfiles={profiles} onSave={handleAddProfile} />
+        {canCreate ? (
+          <AddProfileDialog existingProfiles={profiles} onSave={handleAddProfile} />
+        ) : null}
       </PageHeader>
       <DataTable
         tableId="profiles"

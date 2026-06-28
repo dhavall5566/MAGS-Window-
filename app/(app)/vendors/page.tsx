@@ -16,6 +16,7 @@ import {
   updateVendorApi,
 } from "@/lib/vendor-api";
 import { useAppStore } from "@/lib/store";
+import { useModuleCrud } from "@/hooks/use-module-crud";
 import { formatPartyAddress, getVendorTypeLabel } from "@/lib/vendor";
 import { isMockVendorId } from "@/lib/vendor-merge";
 import type { Vendor, VendorType } from "@/types";
@@ -27,11 +28,13 @@ function displayValue(value: string | undefined) {
 }
 
 export default function VendorsPage() {
+  const { canCreate, canUpdate, canDelete } = useModuleCrud("vendors");
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<VendorTypeFilter>("all");
 
-  const vendors = useAppStore((s) => s.vendors);
+  const storeVendors = useAppStore((s) => s.vendors);
+  const vendors = storeVendors ?? [];
   const addVendor = useAppStore((s) => s.addVendor);
   const updateVendor = useAppStore((s) => s.updateVendor);
   const deleteVendor = useAppStore((s) => s.deleteVendor);
@@ -205,11 +208,17 @@ export default function VendorsPage() {
         align: "right" as const,
         sticky: true,
         render: (row: Vendor) => (
-          <VendorRowActions vendor={row} onEdit={handleEdit} onDelete={handleDelete} />
+          <VendorRowActions
+            vendor={row}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
+          />
         ),
       },
     ],
-    [handleEdit, handleDelete]
+    [canDelete, canUpdate, handleEdit, handleDelete]
   );
 
   return (
@@ -218,7 +227,7 @@ export default function VendorsPage() {
         title="Vendors"
         description="Party names and addresses for outward, coating, and delivery partners"
       >
-        <AddVendorDialog onSave={handleAddVendor} />
+        {canCreate ? <AddVendorDialog onSave={handleAddVendor} /> : null}
       </PageHeader>
       <DataTable
         tableId="vendors"

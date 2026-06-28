@@ -26,6 +26,7 @@ const C = {
   line: [0, 0, 0] as [number, number, number],
   headFill: [238, 240, 246] as [number, number, number],
   white: [255, 255, 255] as [number, number, number],
+  outwardHighlight: [255, 255, 153] as [number, number, number],
 } as const;
 
 function formatPdfDecimal(value: number, maxDecimals = 4): string {
@@ -197,14 +198,34 @@ function drawChallanSignatureFooter(
   const rightX = left + leftW;
   const row2Y = y + topRowH;
   const row3Y = y + topRowH + middleRowH;
+  const isOutwardBundlesWeightRow =
+    footerLeftLines?.length === 2 && totalAmount == null;
 
-  doc.setFillColor(...C.headFill);
-  doc.rect(left, y, width, topRowH, "F");
+  if (isOutwardBundlesWeightRow) {
+    const halfLeftW = leftW / 2;
+    doc.setFillColor(...C.outwardHighlight);
+    doc.rect(left, y, halfLeftW, topRowH, "F");
+    doc.rect(left + halfLeftW, y, halfLeftW, topRowH, "F");
+    doc.setFillColor(...C.headFill);
+    doc.rect(rightX, y, rightW, topRowH, "F");
+  } else {
+    doc.setFillColor(...C.headFill);
+    doc.rect(left, y, width, topRowH, "F");
+  }
 
   if (footerLeftLines?.length) {
     if (footerLeftLines.length === 2) {
-      cellText(footerLeftLines[0], left + 2, y + 5.2, { bold: true, size: 7.5 });
-      cellText(footerLeftLines[1], left + leftW * 0.48, y + 5.2, { bold: true, size: 7.5 });
+      const halfLeftW = leftW / 2;
+      cellText(footerLeftLines[0], left + halfLeftW / 2, y + 5.2, {
+        bold: true,
+        size: 7.5,
+        align: "center",
+      });
+      cellText(footerLeftLines[1], left + halfLeftW + halfLeftW / 2, y + 5.2, {
+        bold: true,
+        size: 7.5,
+        align: "center",
+      });
     } else {
       footerLeftLines.forEach((line, index) => {
         cellText(line, left + 2, y + 3.8 + index * 3.6, { bold: true, size: 7.5 });
@@ -258,6 +279,9 @@ function drawChallanSignatureFooter(
   drawLine(left, row2Y, right, row2Y);
   drawLine(left, row3Y, left + leftW, row3Y);
   drawLine(rightX, row3Y, right, row3Y);
+  if (isOutwardBundlesWeightRow) {
+    drawLine(left + leftW / 2, y, left + leftW / 2, y + topRowH);
+  }
   if (totalAmount != null) {
     drawLine(rightX + totalLabelW, y, rightX + totalLabelW, row2Y);
   } else if (totalNoOfProfiles != null && totalNoOfProfiles > 0) {

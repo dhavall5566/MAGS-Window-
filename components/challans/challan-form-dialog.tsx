@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useFieldArray, type FieldErrors } from "react-hook-form";
+import { useForm, useFieldArray, useWatch, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, CircleHelp, Trash2 } from "lucide-react";
@@ -62,13 +62,14 @@ import {
 import { mergeStockInward, normalizeStockLength } from "@/lib/stock-master";
 import {
   findOutwardChallanIssuerById,
+  findDeliveryChallanFromVendorById,
   getDefaultDeliveryChallanFromVendorId,
   getDefaultOutwardChallanVendorId,
+  getDeliveryChallanFromDisplayName,
   getDeliveryChallanFromVendors,
   getOutwardChallanIssuerVendors,
-  findDeliveryChallanFromVendorById,
 } from "@/lib/outward-challan-branding";
-import { formatNumber, generateId } from "@/lib/utils";
+import { formatNumber, generateId, metersToFeet } from "@/lib/utils";
 import { DEFAULT_APP_SETTINGS } from "@/lib/app-settings";
 import { useAppStore } from "@/lib/store";
 import {
@@ -76,6 +77,7 @@ import {
   getVendorChallanDetails,
   getVendorPartyNames,
   getVendorsForChallanType,
+  normalizeVendor,
 } from "@/lib/vendor";
 import type { Challan, CoatingColor, Profile, Vendor } from "@/types";
 
@@ -259,6 +261,14 @@ export function ChallanFormDialog({
 
   const isPowderCoating = type === "powder_coating";
   const schema = isPowderCoating ? coatingSchema : outwardSchema;
+  const normalizedVendors = useMemo(
+    () => (vendors ?? []).map(normalizeVendor),
+    [vendors]
+  );
+  const deliveryChallanFromVendors = useMemo(
+    () => getDeliveryChallanFromVendors(normalizedVendors),
+    [normalizedVendors]
+  );
   const form = useForm<OutwardForm | CoatingForm>({
     resolver: zodResolver(schema),
     mode: "onSubmit",
@@ -276,14 +286,14 @@ export function ChallanFormDialog({
       ...(isPowderCoating
         ? {
             projectName: "",
-            outwardChallanVendorId: getDefaultOutwardChallanVendorId(vendors),
+            outwardChallanVendorId: getDefaultOutwardChallanVendorId(normalizedVendors),
             color: "",
             sourceOutwardChallanId: "",
             sourceOutwardChallanNumber: "",
           }
         : {
             projectName: "",
-            deliveryChallanFromVendorId: getDefaultDeliveryChallanFromVendorId(vendors),
+            deliveryChallanFromVendorId: getDefaultDeliveryChallanFromVendorId(normalizedVendors),
             totalBundles: "",
             totalWeightManual: "",
           }),
@@ -299,18 +309,13 @@ export function ChallanFormDialog({
   const coatingValues = isPowderCoating ? (form.watch() as CoatingForm) : null;
   const outwardValues = !isPowderCoating ? (form.watch() as OutwardForm) : null;
   const vendorName = form.watch("vendorName");
-  const watchedItems = form.watch("items");
+  const watchedItems = useWatch({ control: form.control, name: "items" }) ?? [];
 
-  const calculatedTotalNoOfProfiles = useMemo(
-    () => (type === "outward" ? sumChallanItemQuantities(watchedItems ?? []) : 0),
-    [type, watchedItems]
-  );
+  const calculatedTotalNoOfProfiles =
+    type === "outward" ? sumChallanItemQuantities(watchedItems) : 0;
 
-  const calculatedTotalWeightAllProfiles = useMemo(
-    () =>
-      type === "outward" ? sumChallanItemWeights(watchedItems ?? [], profiles) : 0,
-    [type, watchedItems, profiles]
-  );
+  const calculatedTotalWeightAllProfiles =
+    type === "outward" ? sumChallanItemWeights(watchedItems, profiles) : 0;
 
   const recalcPowderCoatingItemRates = useCallback(() => {
     if (!isPowderCoating) return;
@@ -350,22 +355,24 @@ export function ChallanFormDialog({
   }, [allChallans, isEdit, challanToEdit?.id]);
 
   const outwardChallanIssuerVendors = useMemo(
-    () => getOutwardChallanIssuerVendors(vendors),
-    [vendors]
+    () => getOutwardChallanIssuerVendors(normalizedVendors),
+    [normalizedVendors]
   );
 
-  const deliveryChallanFromVendors = useMemo(
-    () => getDeliveryChallanFromVendors(vendors),
-    [vendors]
-  );
+  const deliveryChallanFromVendor = useMemo(() => {
+    const vendorId =
+      outwardValues?.deliveryChallanFromVendorId ||
+      getDefaultDeliveryChallanFromVendorId(normalizedVendors);
+    return findDeliveryChallanFromVendorById(normalizedVendors, vendorId);
+  }, [outwardValues?.deliveryChallanFromVendorId, normalizedVendors]);
 
   const outwardChallanVendorId = isPowderCoating
     ? (form.watch("outwardChallanVendorId" as "outwardChallanVendorId") as string)
     : "";
 
   const challanVendors = useMemo(
-    () => getVendorsForChallanType(vendors, type),
-    [vendors, type]
+    () => getVendorsForChallanType(normalizedVendors, type),
+    [normalizedVendors, type]
   );
 
   const vendorOptions = useMemo(() => {
@@ -470,7 +477,7 @@ export function ChallanFormDialog({
     form.setValue(
       `items.${index}.weight`,
       weightFromConversionUnit(profile, { length, qty }),
-      { shouldValidate: true, shouldDirty: true }
+      { shouldValidate: true, shouldDirty: true, shouldTouch: true }
     );
     if (isPowderCoating) {
       form.setValue(
@@ -488,15 +495,16 @@ export function ChallanFormDialog({
 
   useEffect(() => {
     if (!open || isPowderCoating) return;
-    const defaultId = getDefaultDeliveryChallanFromVendorId(vendors);
+    const defaultId = getDefaultDeliveryChallanFromVendorId(normalizedVendors);
     if (!defaultId) return;
-    const current = (form.getValues() as OutwardForm).deliveryChallanFromVendorId;
-    if (!current) {
+    const current = form.getValues("deliveryChallanFromVendorId");
+    const stillValid = deliveryChallanFromVendors.some((vendor) => vendor.id === current);
+    if (!current || !stillValid) {
       form.setValue("deliveryChallanFromVendorId" as "deliveryChallanFromVendorId", defaultId, {
-        shouldValidate: false,
+        shouldValidate: true,
       });
     }
-  }, [open, isPowderCoating, vendors, form]);
+  }, [open, isPowderCoating, deliveryChallanFromVendors, normalizedVendors, form]);
 
   useEffect(() => {
     if (!open) return;
@@ -519,15 +527,15 @@ export function ChallanFormDialog({
               sourceOutwardChallanNumber: challanToEdit.sourceOutwardChallanNumber ?? "",
               outwardChallanVendorId:
                 challanToEdit.outwardChallanVendorId ??
-                getDefaultOutwardChallanVendorId(vendors),
+                getDefaultOutwardChallanVendorId(normalizedVendors),
             }
           : {
               projectName: getOutwardChallanProjectName(challanToEdit),
               deliveryChallanFromVendorId:
                 challanToEdit.type === "outward"
                   ? challanToEdit.deliveryChallanFromVendorId ??
-                    getDefaultDeliveryChallanFromVendorId(vendors)
-                  : getDefaultDeliveryChallanFromVendorId(vendors),
+                    getDefaultDeliveryChallanFromVendorId(normalizedVendors)
+                  : getDefaultDeliveryChallanFromVendorId(normalizedVendors),
               totalBundles:
                 challanToEdit.type === "outward" && challanToEdit.totalBundles != null
                   ? String(challanToEdit.totalBundles)
@@ -541,7 +549,7 @@ export function ChallanFormDialog({
       } as OutwardForm | CoatingForm);
       replace(mapItemsForForm(challanToEdit.items ?? [], type, profiles));
       if (!challanToEdit.vendorAddress && challanToEdit.vendorName) {
-        const vendor = findVendorByPartyName(vendors, challanToEdit.vendorName);
+        const vendor = findVendorByPartyName(normalizedVendors, challanToEdit.vendorName);
         if (vendor) {
           const details = getVendorChallanDetails(vendor);
           form.setValue("vendorAddress", details.vendorAddress);
@@ -565,21 +573,21 @@ export function ChallanFormDialog({
         ...(isPowderCoating
           ? {
               projectName: "",
-              outwardChallanVendorId: getDefaultOutwardChallanVendorId(vendors),
+              outwardChallanVendorId: getDefaultOutwardChallanVendorId(normalizedVendors),
               color: "",
               sourceOutwardChallanId: "",
               sourceOutwardChallanNumber: "",
             }
           : {
               projectName: "",
-              deliveryChallanFromVendorId: getDefaultDeliveryChallanFromVendorId(vendors),
+              deliveryChallanFromVendorId: getDefaultDeliveryChallanFromVendorId(normalizedVendors),
               totalBundles: "",
               totalWeightManual: "",
             }),
         items: [defaultItem(type, defaultChallanLength)],
       } as OutwardForm | CoatingForm);
     }
-  }, [open, challanToEdit, type, form, replace, vendors, profiles, defaultChallanLength, isPowderCoating]);
+  }, [open, challanToEdit, type, form, replace, normalizedVendors, profiles, defaultChallanLength, isPowderCoating]);
 
   const onProfileSelect = (index: number, code: string) => {
     const profile = findProfileByCode(profiles, code);
@@ -679,7 +687,7 @@ export function ChallanFormDialog({
           }, 0) * 100
         ) / 100;
       const deliveryIssuer = findDeliveryChallanFromVendorById(
-        vendors,
+        normalizedVendors,
         outwardData.deliveryChallanFromVendorId
       );
       challan = {
@@ -697,7 +705,7 @@ export function ChallanFormDialog({
     } else {
       const coatingData = data as CoatingForm;
       const issuer = findOutwardChallanIssuerById(
-        vendors,
+        normalizedVendors,
         coatingData.outwardChallanVendorId
       );
       challan = {
@@ -763,23 +771,13 @@ export function ChallanFormDialog({
                   (form.formState.errors as FieldErrors<OutwardForm>).deliveryChallanFromVendorId
                 )}
               >
-                <SearchableSelect
-                  value={outwardValues?.deliveryChallanFromVendorId || undefined}
-                  onValueChange={(value) =>
-                    form.setValue("deliveryChallanFromVendorId" as "deliveryChallanFromVendorId", value, {
-                      shouldValidate: true,
-                    })
-                  }
-                  options={deliveryChallanFromVendors.map((vendor) => ({
-                    value: vendor.id,
-                    label: vendor.challanHeaderName?.trim() || vendor.partyName,
-                  }))}
-                  placeholder="Select delivery challan from"
-                  searchPlaceholder="Search delivery challan from…"
-                  aria-invalid={fieldInvalid(
-                    form.formState.isSubmitted,
-                    (form.formState.errors as FieldErrors<OutwardForm>).deliveryChallanFromVendorId
-                  )}
+                <input type="hidden" {...form.register("deliveryChallanFromVendorId")} />
+                <Input
+                  readOnly
+                  value={getDeliveryChallanFromDisplayName(deliveryChallanFromVendor)}
+                  placeholder="Add a vendor with type Delivery Challan From"
+                  className="cursor-default bg-muted/60"
+                  aria-readonly
                 />
               </FormField>
             )}
@@ -959,18 +957,6 @@ export function ChallanFormDialog({
                 {...form.register("driverName")}
               />
             </FormField>
-            {type === "outward" && (
-              <FormField label="Total Bundles" optional>
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  placeholder="Enter total bundles"
-                  {...form.register("totalBundles")}
-                />
-              </FormField>
-            )}
             {type === "powder_coating" && (
               <FormField
                 label="Color"
@@ -1028,7 +1014,9 @@ export function ChallanFormDialog({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => append(defaultItem(type, defaultChallanLength))}
+                onClick={() => {
+                  append(defaultItem(type, defaultChallanLength));
+                }}
               >
                 Add Item
               </Button>
@@ -1075,6 +1063,7 @@ export function ChallanFormDialog({
                 Number(itemQty) || 0,
                 itemRmtrRate
               );
+              const itemLengthFeet = metersToFeet(normalizedItemLength);
 
               return (
               <div
@@ -1095,92 +1084,124 @@ export function ChallanFormDialog({
                     searchPlaceholder="Search profile…"
                   />
                 </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <Label className="text-xs">Qty</Label>
-                  <Input
-                    type="number"
-                    className="w-full min-w-0"
-                    {...form.register(`items.${index}.qty`, {
-                      onChange: () => updateItemWeight(index),
-                    })}
-                  />
-                </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <Label className="text-xs">Length (m)</Label>
-                  {useSplitLengthDropdown ? (
-                    <SearchableSelect
-                      className="w-full"
-                      searchable={false}
-                      value={
-                        normalizedItemLength > 0 ? String(normalizedItemLength) : ""
-                      }
-                      onValueChange={(value) => {
-                        form.setValue(`items.${index}.length`, Number(value) || 0, {
-                          shouldValidate: true,
-                        });
-                        updateItemWeight(index);
-                      }}
-                      options={splitLengthOptions.map((length) => ({
-                        value: String(length),
-                        label: formatSplitLengthOption(length),
-                      }))}
-                      placeholder="Select length"
-                      emptyText="No split stock remaining"
-                    />
-                  ) : (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="w-full min-w-0 tabular-nums"
-                      {...form.register(`items.${index}.length`, {
-                        onChange: () => updateItemWeight(index),
-                      })}
-                    />
-                  )}
-                </div>
-                {!isPowderCoating && (
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <Label className="text-xs">Total Weight</Label>
-                    <Input
-                      className="w-full min-w-0 bg-muted tabular-nums"
-                      readOnly
-                      value={
-                        itemProfile && Number(itemWeight) > 0
-                          ? `${formatNumber(Number(itemWeight), 2)} kg`
-                          : "—"
-                      }
-                    />
-                  </div>
-                )}
-                {isPowderCoating && (
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex h-5 items-center gap-1.5">
-                      <Label className="text-xs">{POWDER_COATING_RMTR_RATE_LABEL}</Label>
-                      <PowderCoatingRateHelp
-                        profile={itemProfile}
-                        rmtrRate={itemRmtrRate}
+                {isPowderCoating ? (
+                  <>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Length (m)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="w-full min-w-0 tabular-nums"
+                        {...form.register(`items.${index}.length`, {
+                          onChange: () => updateItemWeight(index),
+                        })}
                       />
                     </div>
-                    <Input
-                      type="number"
-                      step="any"
-                      min="0"
-                      className="w-full min-w-0 bg-muted"
-                      readOnly
-                      value={itemRmtrRate > 0 ? itemRmtrRate : ""}
-                    />
-                  </div>
-                )}
-                {isPowderCoating && (
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <Label className="text-xs">Amount</Label>
-                    <Input
-                      className="w-full min-w-0 bg-muted tabular-nums"
-                      readOnly
-                      value={itemAmount > 0 ? formatCurrency(itemAmount) : "—"}
-                    />
-                  </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Length (ft)</Label>
+                      <Input
+                        readOnly
+                        className="w-full min-w-0 bg-muted tabular-nums"
+                        value={itemLengthFeet > 0 ? formatNumber(itemLengthFeet, 2) : ""}
+                        aria-readonly
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex h-5 items-center gap-1.5">
+                        <Label className="text-xs">{POWDER_COATING_RMTR_RATE_LABEL}</Label>
+                        <PowderCoatingRateHelp
+                          profile={itemProfile}
+                          rmtrRate={itemRmtrRate}
+                        />
+                      </div>
+                      <Input
+                        type="number"
+                        step="any"
+                        min="0"
+                        className="w-full min-w-0 bg-muted"
+                        readOnly
+                        value={itemRmtrRate > 0 ? itemRmtrRate : ""}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Qty</Label>
+                      <Input
+                        type="number"
+                        className="w-full min-w-0"
+                        {...form.register(`items.${index}.qty`, {
+                          onChange: () => updateItemWeight(index),
+                        })}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Amount</Label>
+                      <Input
+                        className="w-full min-w-0 bg-muted tabular-nums"
+                        readOnly
+                        value={itemAmount > 0 ? formatCurrency(itemAmount) : ""}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Length (m)</Label>
+                      {useSplitLengthDropdown ? (
+                        <SearchableSelect
+                          className="w-full"
+                          searchable={false}
+                          value={
+                            normalizedItemLength > 0 ? String(normalizedItemLength) : ""
+                          }
+                          onValueChange={(value) => {
+                            form.setValue(`items.${index}.length`, Number(value) || 0, {
+                              shouldValidate: true,
+                            });
+                            updateItemWeight(index);
+                          }}
+                          options={splitLengthOptions.map((length) => ({
+                            value: String(length),
+                            label: formatSplitLengthOption(length),
+                          }))}
+                          placeholder="Select length"
+                          emptyText="No split stock remaining"
+                        />
+                      ) : (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-full min-w-0 tabular-nums"
+                          {...form.register(`items.${index}.length`, {
+                            onChange: () => updateItemWeight(index),
+                          })}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Qty</Label>
+                      <Input
+                        type="number"
+                        className="w-full min-w-0"
+                        {...form.register(`items.${index}.qty`, {
+                          onChange: () => updateItemWeight(index),
+                        })}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label className="text-xs">Total Weight</Label>
+                      <Input
+                        className="w-full min-w-0 bg-muted tabular-nums"
+                        readOnly
+                        value={
+                          itemProfile && Number(itemWeight) > 0
+                            ? `${formatNumber(Number(itemWeight), 2)} kg`
+                            : "—"
+                        }
+                      />
+                    </div>
+                  </>
                 )}
                 {fields.length > 1 && (
                   <Button
@@ -1206,6 +1227,16 @@ export function ChallanFormDialog({
           {type === "outward" && (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Total Bundles" optional>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    placeholder="Enter total bundles"
+                    {...form.register("totalBundles")}
+                  />
+                </FormField>
                 <FormField label="Total Weight Manual" optional>
                   <Input
                     type="number"
@@ -1217,18 +1248,18 @@ export function ChallanFormDialog({
                     {...form.register("totalWeightManual")}
                   />
                 </FormField>
-                <FormField label="Total Weight of All Profiles">
-                  <Input
-                    readOnly
-                    className="bg-muted tabular-nums"
-                    value={
-                      calculatedTotalWeightAllProfiles > 0
-                        ? `${formatNumber(calculatedTotalWeightAllProfiles, 2)} kg`
-                        : "—"
-                    }
-                  />
-                </FormField>
               </div>
+              <FormField label="Total Weight of All Profiles">
+                <Input
+                  readOnly
+                  className="bg-muted tabular-nums"
+                  value={
+                    calculatedTotalWeightAllProfiles > 0
+                      ? `${formatNumber(calculatedTotalWeightAllProfiles, 2)} kg`
+                      : "—"
+                  }
+                />
+              </FormField>
               <FormField label="Total No. of Profiles">
                 <Input
                   readOnly

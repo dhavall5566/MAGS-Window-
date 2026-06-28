@@ -7,6 +7,7 @@ import { AddUserDialog } from "@/components/users/add-user-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppStore } from "@/lib/store";
+import { useModuleCrud } from "@/hooks/use-module-crud";
 import type { User } from "@/types";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -16,6 +17,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const { canCreate } = useModuleCrud("users");
   const users = useAppStore((s) => s.users);
   const addUser = useAppStore((s) => s.addUser);
 
@@ -90,7 +92,9 @@ export default function UsersPage() {
   return (
     <div>
       <PageHeader title="User Management" description="Manage system users and role-based access">
-        <AddUserDialog existingEmails={existingEmails} onSave={addUser} />
+        {canCreate ? (
+          <AddUserDialog existingEmails={existingEmails} onSave={addUser} />
+        ) : null}
       </PageHeader>
       <DataTable
         tableId="users"

@@ -29,4 +29,7 @@ export function seedFetchCacheFromAppStore(
   if (state.vendors?.length) {
     setJsonCacheEntry("/api/vendors", { vendors: state.vendors });
   }
+  if (state.reports?.length) {
+    setJsonCacheEntry("/api/reports", { reports: state.reports });
+  }
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/fetch-json";
+import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
 import { readCachedApiList } from "@/hooks/use-seeded-list-state";
 
 type ListResponse<K extends string, T> = Record<K, T[] | undefined>;
@@ -56,7 +57,16 @@ export function useCachedApiList<T, K extends string>(
       .then((response) => {
         if (cancelled) return;
         const list = response?.[listKey] ?? [];
-        setApiItems(mapItemRef.current ? list.map(mapItemRef.current) : list);
+        const remote = mapItemRef.current ? list.map(mapItemRef.current) : list;
+        const local = getStoreFallbackRef.current?.() ?? [];
+        const merged =
+          local.length > 0
+            ? mergeListsByIdPreferLocal(
+                remote as Array<T & { id: string }>,
+                local as Array<T & { id: string }>
+              )
+            : remote;
+        setApiItems(merged);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);

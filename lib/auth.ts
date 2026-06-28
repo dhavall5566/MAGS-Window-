@@ -22,6 +22,11 @@ export function getDefaultUser(): User {
   );
 }
 
+/** Active session user, or demo default when not logged in. */
+export function getCurrentUser(): User {
+  return getSession()?.user ?? getDefaultUser();
+}
+
 export interface AuthSession {
   user: User;
   token: string;

@@ -77,27 +77,13 @@ export function mergeChallans(api: Challan[], store: Challan[]): Challan[] {
     byId.set(entry.id, { ...entry });
   }
 
-  store.forEach((entry) => {
-    if (!entry?.id) return;
+  for (const entry of store) {
+    if (!entry?.id) continue;
     const existing = byId.get(entry.id);
     byId.set(entry.id, existing ? { ...existing, ...entry } : { ...entry });
-  });
-
-  const seenNumbers = new Set<string>();
-  const merged: Challan[] = [];
-
-  for (const challan of filterVisibleChallans(Array.from(byId.values()))) {
-    const numberKey = `${challan.type}::${(challan.challanNumber ?? "").trim().toLowerCase()}`;
-    if (numberKey.endsWith("::")) {
-      merged.push(challan);
-      continue;
-    }
-    if (seenNumbers.has(numberKey)) continue;
-    seenNumbers.add(numberKey);
-    merged.push(challan);
   }
 
-  return merged;
+  return filterVisibleChallans(Array.from(byId.values()));
 }
 
 export function buildOutwardConsumptionFromChallans(

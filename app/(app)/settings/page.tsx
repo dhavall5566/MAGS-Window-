@@ -1,11 +1,11 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { Building2, ListOrdered, User } from "lucide-react";
+import { startTransition, useCallback, useEffect, useState } from "react";
+import { Building2, ListOrdered, Shield } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { PageHeader } from "@/components/shared/page-header";
 import { CompanySettingsPanel } from "@/components/settings/company-settings-panel";
 import { NavigationSettingsPanel } from "@/components/settings/navigation-settings-panel";
+import { SettingsPageHeader } from "@/components/settings/settings-page-header";
 import { SettingsTabsList, SettingsTabsTrigger } from "@/components/settings/settings-tabs-nav";
 import { UserSettingsPanel } from "@/components/settings/user-settings-panel";
 
@@ -14,20 +14,20 @@ const SETTINGS_TAB_KEY = "mags-settings-tab";
 const SETTINGS_TABS = [
   {
     value: "user",
-    label: "User",
-    description: "Profile & permissions",
-    icon: User,
+    label: "Access Control",
+    description: "Profiles, roles & permissions",
+    icon: Shield,
   },
   {
     value: "tabs",
-    label: "Tab Settings",
-    description: "Sidebar navigation",
+    label: "Navigation",
+    description: "Sidebar menu configuration",
     icon: ListOrdered,
   },
   {
     value: "company",
-    label: "Company",
-    description: "Business details",
+    label: "Organization",
+    description: "Company & contact details",
     icon: Building2,
   },
 ] as const;
@@ -43,9 +43,7 @@ function readStoredSettingsTab(): SettingsTab {
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("user");
-  const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTab>>(
-    () => new Set(["user"])
-  );
+  const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTab>>(() => new Set(["user"]));
 
   useEffect(() => {
     const stored = readStoredSettingsTab();
@@ -66,17 +64,13 @@ export default function SettingsPage() {
   }, []);
 
   return (
-    <div>
-      <PageHeader
+    <div className="-mx-3 -mt-3 min-h-[calc(100vh-4rem)] bg-muted/20 sm:-mx-4 sm:-mt-4 lg:-mx-6 lg:-mt-6">
+      <SettingsPageHeader
         title="Settings"
-        description="User, navigation, and company preferences"
+        description="Centralized administration for user access, application navigation, and organization profile."
       />
 
-      <Tabs
-        value={activeTab}
-        onValueChange={handleTabChange}
-        className="flex flex-col gap-6 lg:flex-row lg:items-start"
-      >
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col">
         <SettingsTabsList aria-label="Settings sections">
           {SETTINGS_TABS.map((tab) => (
             <SettingsTabsTrigger
@@ -90,31 +84,19 @@ export default function SettingsPage() {
           ))}
         </SettingsTabsList>
 
-        <div className="min-w-0 flex-1">
+        <div className="w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {visitedTabs.has("user") ? (
-            <TabsContent
-              value="user"
-              persist
-              className="mt-0 data-[state=inactive]:hidden"
-            >
+            <TabsContent value="user" persist className="mt-0 data-[state=inactive]:hidden">
               <UserSettingsPanel />
             </TabsContent>
           ) : null}
           {visitedTabs.has("tabs") ? (
-            <TabsContent
-              value="tabs"
-              persist
-              className="mt-0 data-[state=inactive]:hidden"
-            >
+            <TabsContent value="tabs" persist className="mt-0 data-[state=inactive]:hidden">
               <NavigationSettingsPanel />
             </TabsContent>
           ) : null}
           {visitedTabs.has("company") ? (
-            <TabsContent
-              value="company"
-              persist
-              className="mt-0 data-[state=inactive]:hidden"
-            >
+            <TabsContent value="company" persist className="mt-0 data-[state=inactive]:hidden">
               <CompanySettingsPanel />
             </TabsContent>
           ) : null}

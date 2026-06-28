@@ -18,11 +18,9 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate, formatNumber } from "@/lib/utils";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
-import {
-  createChallanApi,
-  deleteChallanApi,
-  updateChallanApi,
-} from "@/lib/challan-api";
+import { mergeChallans } from "@/lib/challan-consumption";
+import { createChallanApi, deleteChallanApi, updateChallanApi } from "@/lib/challan-api";
+import { setJsonCacheEntry } from "@/lib/fetch-json";
 import {
   calculatePowderCoatingItemAmount,
   findProfileByCode,
@@ -35,7 +33,6 @@ import {
   matchesItemsProfileCodeFilters,
   mergeProfiles,
 } from "@/lib/profile";
-import { mergeChallans } from "@/lib/challan-consumption";
 import { getOutwardChallanProjectName, sumChallanItemQuantities, sumChallanItemWeights } from "@/lib/challan-outward";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
@@ -290,31 +287,34 @@ export default function ChallansPage() {
 
   const handleCreate = (challan: Challan) => {
     replaceChallan(challan);
-    setApiChallans((rows) => {
-      const exists = rows.some((row) => row.id === challan.id);
-      return exists
-        ? rows.map((row) => (row.id === challan.id ? challan : row))
-        : [...rows, challan];
-    });
+    const storeAfterSave = useAppStore.getState().challans ?? [];
+    const nextChallans = mergeChallans(apiChallans, storeAfterSave);
+    setApiChallans(nextChallans);
+    setJsonCacheEntry("/api/challans", { challans: nextChallans });
 
     void createChallanApi(challan).then((saved) => {
       if (!saved) return;
-      useAppStore.setState((state) => ({
-        challans: (state.challans ?? []).map((row) =>
+      useAppStore.setState((state) => {
+        const challans = (state.challans ?? []).map((row) =>
           row.id === saved.id ? saved : row
-        ),
-      }));
-      setApiChallans((rows) =>
-        rows.map((row) => (row.id === saved.id ? saved : row))
+        );
+        return { challans };
+      });
+      const merged = mergeChallans(
+        apiChallans,
+        useAppStore.getState().challans ?? []
       );
+      setApiChallans(merged);
+      setJsonCacheEntry("/api/challans", { challans: merged });
     });
   };
 
   const handleUpdate = (challan: Challan) => {
     replaceChallan(challan);
-    setApiChallans((rows) =>
-      rows.map((row) => (row.id === challan.id ? challan : row))
-    );
+    const storeAfterSave = useAppStore.getState().challans ?? [];
+    const nextChallans = mergeChallans(apiChallans, storeAfterSave);
+    setApiChallans(nextChallans);
+    setJsonCacheEntry("/api/challans", { challans: nextChallans });
     setEditOpen(false);
     setEditingChallan(null);
 
@@ -325,9 +325,12 @@ export default function ChallansPage() {
           row.id === saved.id ? saved : row
         ),
       }));
-      setApiChallans((rows) =>
-        rows.map((row) => (row.id === saved.id ? saved : row))
+      const merged = mergeChallans(
+        apiChallans,
+        useAppStore.getState().challans ?? []
       );
+      setApiChallans(merged);
+      setJsonCacheEntry("/api/challans", { challans: merged });
     });
   };
 
