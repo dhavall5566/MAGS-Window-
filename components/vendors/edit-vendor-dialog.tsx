@@ -80,7 +80,7 @@ export function EditVendorDialog({
       personName: data.personName?.trim() ?? "",
       phoneNo: data.phoneNo?.trim() ?? "",
       email: data.email?.trim() ?? "",
-      gstNo: data.gstNo?.trim() ?? "",
+      gstNo: data.gstNo?.trim().toUpperCase() ?? "",
       vendorType: data.vendorType,
     });
     onOpenChange(false);

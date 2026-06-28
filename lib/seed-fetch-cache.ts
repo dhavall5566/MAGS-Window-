@@ -26,4 +26,7 @@ export function seedFetchCacheFromAppStore(
   if (state.powderCoating?.length) {
     setJsonCacheEntry("/api/powder-coating", { powderCoating: state.powderCoating });
   }
+  if (state.vendors?.length) {
+    setJsonCacheEntry("/api/vendors", { vendors: state.vendors });
+  }
 }

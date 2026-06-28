@@ -10,39 +10,35 @@ import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { StockInwardFormFields } from "@/components/stock-inward/stock-inward-form-fields";
 import {
   buildStockInwardEntriesFromAddForm,
-  createEmptyStockInwardProfileRow,
-  DEFAULT_STOCK_INWARD_SUPPLIER,
+  createEmptyStockInwardAddFormDefaults,
   stockInwardAddFormSchema,
   type StockInwardAddFormData,
 } from "@/lib/stock-inward-form";
+import { getSupplierPartyNames } from "@/lib/vendor";
 import { generateId } from "@/lib/utils";
-import type { Profile, StockInward } from "@/types";
+import type { Profile, StockInward, Vendor } from "@/types";
 
 interface AddStockInwardDialogProps {
   profiles: Profile[];
+  vendors: Vendor[];
   existingInward: StockInward[];
   onSave: (entries: StockInward[]) => Promise<void>;
 }
 
-const emptyFormValues: StockInwardAddFormData = {
-  date: new Date().toISOString().split("T")[0],
-  invoiceNo: "",
-  supplier: DEFAULT_STOCK_INWARD_SUPPLIER,
-  profileRows: [createEmptyStockInwardProfileRow()],
-};
-
 export function AddStockInwardDialog({
   profiles,
+  vendors,
   existingInward,
   onSave,
 }: AddStockInwardDialogProps) {
   const [open, setOpen] = useState(false);
+  const supplierNames = getSupplierPartyNames(vendors);
 
   const form = useForm<StockInwardAddFormData>({
     resolver: zodResolver(stockInwardAddFormSchema),
     mode: "onSubmit",
     reValidateMode: "onBlur",
-    defaultValues: emptyFormValues,
+    defaultValues: createEmptyStockInwardAddFormDefaults(vendors),
   });
 
   const {
@@ -59,10 +55,7 @@ export function AddStockInwardDialog({
   );
 
   const resetForm = () => {
-    reset({
-      ...emptyFormValues,
-      date: new Date().toISOString().split("T")[0],
-    });
+    reset(createEmptyStockInwardAddFormDefaults(vendors));
   };
 
   const onSubmit = async (data: StockInwardAddFormData) => {
@@ -84,7 +77,7 @@ export function AddStockInwardDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) resetForm();
+        resetForm();
       }}
       size="2xl"
       title="Add Stock Inward"
@@ -105,13 +98,14 @@ export function AddStockInwardDialog({
           submitLabel={entryCount > 1 ? `Save ${entryCount} Entries` : "Save Stock"}
           loadingLabel="Saving"
           isSubmitting={isSubmitting}
-          disabled={profiles.length === 0}
+          disabled={profiles.length === 0 || supplierNames.length === 0}
         />
       }
     >
       <StockInwardFormFields
         form={form}
         profiles={profiles}
+        vendors={vendors}
         isSubmitted={isSubmitted}
       />
     </FormDialog>

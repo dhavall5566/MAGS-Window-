@@ -7,6 +7,7 @@ import { getOutwardChallanProjectName, sumChallanItemQuantities } from "./challa
 import {
   getOutwardChallanPdfBranding,
   resolveOutwardChallanPdfBranding,
+  resolveOutwardDeliveryChallanPdfBranding,
 } from "./outward-challan-branding";
 import {
   calculatePowderCoatingItemAmount,
@@ -16,6 +17,7 @@ import {
   POWDER_COATING_RMTR_RATE_LABEL,
 } from "./profile";
 import { findVendorByPartyName } from "./vendor";
+import { formatGstNo, formatPdfDate } from "./utils";
 
 const C = {
   primary: [...BRAND.primaryRgb] as [number, number, number],
@@ -25,14 +27,6 @@ const C = {
   headFill: [238, 240, 246] as [number, number, number],
   white: [255, 255, 255] as [number, number, number],
 } as const;
-
-function formatChallanDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr || "-";
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  return `${day}.${month}.${d.getFullYear()}`;
-}
 
 function formatPdfDecimal(value: number, maxDecimals = 4): string {
   if (!value) return "";
@@ -102,13 +96,10 @@ function getItemRate(
   return getPowderCoatingItemRate(item, profile, coatingRate);
 }
 
-function buildMetaRows(
-  challan: Challan,
-  options?: { issuerGstNo?: string }
-): ReadonlyArray<readonly [string, string]> {
+function buildMetaRows(challan: Challan): ReadonlyArray<readonly [string, string]> {
   const rows: Array<[string, string]> = [
     [getChallanNumberMetaLabel(challan.type), challan.challanNumber?.trim() || ""],
-    ["Date", formatChallanDate(challan.date)],
+    ["Date", formatPdfDate(challan.date)],
     ["V. Number", challan.vehicleNumber?.trim() || ""],
   ];
 
@@ -116,9 +107,6 @@ function buildMetaRows(
     const outward = challan as OutwardChallan;
     const projectName = getOutwardChallanProjectName(outward);
     if (projectName) rows.push(["Project Name", projectName]);
-    if (options?.issuerGstNo?.trim()) {
-      rows.push(["GST No.", options.issuerGstNo.trim()]);
-    }
   }
 
   if (challan.type === "powder_coating") {
@@ -223,7 +211,7 @@ function drawChallanSignatureFooter(
       });
     }
   } else if (gstNo) {
-    cellText(`GST NO: ${gstNo}`, left + 2, y + 5.2, { bold: true, size: 8 });
+    cellText(`GST NO: ${formatGstNo(gstNo)}`, left + 2, y + 5.2, { bold: true, size: 8 });
   }
 
   if (totalAmount != null) {
@@ -314,15 +302,18 @@ export async function generateChallanDocumentPDF(
     doc.text(text, x, yPos, { align: opts.align ?? "left" });
   };
 
-  const partyGstNo =
-    challan.vendorGstNo?.trim() ||
-    findVendorByPartyName(vendors, challan.vendorName)?.gstNo?.trim() ||
-    "";
+  const partyGstNo = formatGstNo(
+    challan.vendorGstNo ||
+      findVendorByPartyName(vendors, challan.vendorName)?.gstNo ||
+      ""
+  );
 
   const pdfBranding =
     challan.type === "powder_coating"
       ? resolveOutwardChallanPdfBranding(challan, vendors)
-      : getOutwardChallanPdfBranding(undefined);
+      : challan.type === "outward"
+        ? resolveOutwardDeliveryChallanPdfBranding(challan, vendors)
+        : getOutwardChallanPdfBranding(undefined);
 
   const addressLine = pdfBranding.addressLine2
     ? `${pdfBranding.addressLine1}, ${pdfBranding.addressLine2}`
@@ -397,23 +388,52 @@ export async function generateChallanDocumentPDF(
 
   y += headerBlockH;
 
-  // ---- Email | Phone row ----
+  // ---- Email | Phone | (GST for outward) row ----
   const contactH = 6;
-  const midX = left + contentWidth / 2;
-  const leftContactCenter = left + contentWidth / 4;
-  const rightContactCenter = left + (3 * contentWidth) / 4;
-  cellText(`Email: ${pdfBranding.email}`, leftContactCenter, y + 4, {
-    size: 7.5,
-    align: "center",
-  });
-  cellText(pdfBranding.phone, rightContactCenter, y + 4, {
-    size: 7.5,
-    align: "center",
-  });
-  drawLine(left, y, left, y + contactH);
-  drawLine(right, y, right, y + contactH);
-  drawLine(midX, y, midX, y + contactH);
-  drawLine(left, y + contactH, right, y + contactH);
+  const isOutwardChallan = challan.type === "outward";
+
+  if (isOutwardChallan) {
+    const thirdW = contentWidth / 3;
+    const emailCenter = left + thirdW / 2;
+    const phoneCenter = left + thirdW + thirdW / 2;
+    const gstCenter = left + 2 * thirdW + thirdW / 2;
+    const gstNo = formatGstNo(pdfBranding.gstNo) || "-";
+
+    cellText(`Email: ${pdfBranding.email || "-"}`, emailCenter, y + 4, {
+      size: 7,
+      align: "center",
+    });
+    cellText(pdfBranding.phone || "-", phoneCenter, y + 4, {
+      size: 7,
+      align: "center",
+    });
+    cellText(`GST No.: ${gstNo}`, gstCenter, y + 4, {
+      size: 7,
+      align: "center",
+    });
+
+    drawLine(left, y, left, y + contactH);
+    drawLine(right, y, right, y + contactH);
+    drawLine(left + thirdW, y, left + thirdW, y + contactH);
+    drawLine(left + 2 * thirdW, y, left + 2 * thirdW, y + contactH);
+    drawLine(left, y + contactH, right, y + contactH);
+  } else {
+    const midX = left + contentWidth / 2;
+    const leftContactCenter = left + contentWidth / 4;
+    const rightContactCenter = left + (3 * contentWidth) / 4;
+    cellText(`Email: ${pdfBranding.email}`, leftContactCenter, y + 4, {
+      size: 7.5,
+      align: "center",
+    });
+    cellText(pdfBranding.phone, rightContactCenter, y + 4, {
+      size: 7.5,
+      align: "center",
+    });
+    drawLine(left, y, left, y + contactH);
+    drawLine(right, y, right, y + contactH);
+    drawLine(midX, y, midX, y + contactH);
+    drawLine(left, y + contactH, right, y + contactH);
+  }
   y += contactH;
 
   // ---- Party / meta block ----
@@ -432,9 +452,7 @@ export async function generateChallanDocumentPDF(
     ["GST No.", partyGstNo],
   ] as const;
   const leftBlockH = rowH + addressH + rowH * afterAddressRows.length;
-  const metaRows = buildMetaRows(challan, {
-    issuerGstNo: challan.type === "outward" ? pdfBranding.gstNo : undefined,
-  });
+  const metaRows = buildMetaRows(challan);
   const metaBlockH = Math.max(leftBlockH, rowH * metaRows.length);
 
   cellText("Party Name", left + 1.5, y + 4, { bold: true, size: 6.8, color: C.inkSoft });

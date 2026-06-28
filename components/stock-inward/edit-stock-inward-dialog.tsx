@@ -8,34 +8,28 @@ import { FormDialogActions } from "@/components/shared/form-dialog-actions";
 import { StockInwardFormFields } from "@/components/stock-inward/stock-inward-form-fields";
 import {
   buildStockInwardEntriesFromEditForm,
-  createEmptyStockInwardProfileRow,
-  DEFAULT_STOCK_INWARD_SUPPLIER,
+  createEmptyStockInwardAddFormDefaults,
   stockInwardAddFormSchema,
   stockInwardEntryToAddFormData,
   type StockInwardAddFormData,
 } from "@/lib/stock-inward-form";
 import { generateId } from "@/lib/utils";
-import type { Profile, StockInward } from "@/types";
+import type { Profile, StockInward, Vendor } from "@/types";
 
 interface EditStockInwardDialogProps {
   entry: StockInward | null;
   profiles: Profile[];
+  vendors: Vendor[];
   existingInward: StockInward[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (entries: StockInward[]) => Promise<void>;
 }
 
-const emptyFormValues: StockInwardAddFormData = {
-  date: new Date().toISOString().split("T")[0],
-  invoiceNo: "",
-  supplier: DEFAULT_STOCK_INWARD_SUPPLIER,
-  profileRows: [createEmptyStockInwardProfileRow()],
-};
-
 export function EditStockInwardDialog({
   entry,
   profiles,
+  vendors,
   existingInward,
   open,
   onOpenChange,
@@ -45,7 +39,7 @@ export function EditStockInwardDialog({
     resolver: zodResolver(stockInwardAddFormSchema),
     mode: "onSubmit",
     reValidateMode: "onBlur",
-    defaultValues: emptyFormValues,
+    defaultValues: createEmptyStockInwardAddFormDefaults(vendors),
   });
 
   const {
@@ -104,6 +98,7 @@ export function EditStockInwardDialog({
       <StockInwardFormFields
         form={form}
         profiles={profiles}
+        vendors={vendors}
         isSubmitted={isSubmitted}
         idPrefix="edit-stock"
       />

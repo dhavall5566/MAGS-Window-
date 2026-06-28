@@ -9,8 +9,15 @@ import { VendorRowActions } from "@/components/vendors/vendor-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { SegmentedControl } from "@/components/shared/segmented-control";
 import { VENDOR_TYPE_OPTIONS } from "@/lib/vendor-form";
+import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
+import {
+  createVendorApi,
+  deleteVendorApi,
+  updateVendorApi,
+} from "@/lib/vendor-api";
 import { useAppStore } from "@/lib/store";
 import { formatPartyAddress, getVendorTypeLabel } from "@/lib/vendor";
+import { isMockVendorId } from "@/lib/vendor-merge";
 import type { Vendor, VendorType } from "@/types";
 
 type VendorTypeFilter = VendorType | "all";
@@ -28,6 +35,37 @@ export default function VendorsPage() {
   const addVendor = useAppStore((s) => s.addVendor);
   const updateVendor = useAppStore((s) => s.updateVendor);
   const deleteVendor = useAppStore((s) => s.deleteVendor);
+  const upsertVendor = useAppStore((s) => s.upsertVendor);
+
+  const handleAddVendor = useCallback(
+    async (vendor: Vendor) => {
+      addVendor(vendor);
+      const saved = await createVendorApi(vendor);
+      if (saved) {
+        upsertVendor(saved);
+      }
+      showAddedToast("Vendor");
+    },
+    [addVendor, upsertVendor]
+  );
+
+  const handleUpdateVendor = useCallback(
+    async (
+      id: string,
+      updates: Pick<
+        Vendor,
+        "partyName" | "partyAddress" | "personName" | "phoneNo" | "email" | "vendorType" | "gstNo"
+      >
+    ) => {
+      updateVendor(id, updates);
+      const saved = await updateVendorApi(id, updates);
+      if (saved) {
+        upsertVendor(saved);
+      }
+      showSavedToast("Vendor");
+    },
+    [updateVendor, upsertVendor]
+  );
 
   const handleEdit = useCallback((vendor: Vendor) => {
     setEditingVendor(vendor);
@@ -35,11 +73,23 @@ export default function VendorsPage() {
   }, []);
 
   const handleDelete = useCallback(
-    (vendor: Vendor) => {
+    async (vendor: Vendor) => {
+      if (isMockVendorId(vendor.id)) {
+        alert("Seeded vendors cannot be deleted.");
+        return;
+      }
       if (!confirm(`Delete vendor ${vendor.partyName}?`)) return;
+
       deleteVendor(vendor.id);
+      const ok = await deleteVendorApi(vendor.id);
+      if (!ok) {
+        upsertVendor(vendor);
+        alert("Could not delete vendor from the server. It was restored locally.");
+        return;
+      }
+      showDeletedToast("Vendor");
     },
-    [deleteVendor]
+    [deleteVendor, upsertVendor]
   );
 
   const filteredVendors = useMemo(
@@ -121,7 +171,7 @@ export default function VendorsPage() {
         header: "GST No.",
         className: "whitespace-nowrap font-mono text-sm",
         align: "left" as const,
-        render: (row: Vendor) => displayValue(row.gstNo),
+        render: (row: Vendor) => displayValue(row.gstNo?.toUpperCase()),
       },
       {
         key: "personName",
@@ -168,7 +218,7 @@ export default function VendorsPage() {
         title="Vendors"
         description="Party names and addresses for outward, coating, and delivery partners"
       >
-        <AddVendorDialog onSave={addVendor} />
+        <AddVendorDialog onSave={handleAddVendor} />
       </PageHeader>
       <DataTable
         tableId="vendors"
@@ -187,7 +237,7 @@ export default function VendorsPage() {
           setEditOpen(next);
           if (!next) setEditingVendor(null);
         }}
-        onSave={updateVendor}
+        onSave={handleUpdateVendor}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import type { Profile, SeriesName, Challan, StockInward, Consumption, PowderCoat
 import { mockVendors } from "@/lib/mock-data/vendors";
 import { mockUsers } from "@/lib/mock-data/users";
 import { enrichChallanVendorDetails, normalizeVendor } from "@/lib/vendor";
+import { mergeVendorLists } from "@/lib/vendor-merge";
 import { getManualConsumption, filterVisibleChallans } from "@/lib/challan-consumption";
 import { normalizeProfile } from "@/lib/profile";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "@/lib/app-settings";
@@ -61,10 +62,12 @@ interface AppState {
     id: string,
     updates: Pick<
       Vendor,
-      "partyName" | "partyAddress" | "personName" | "phoneNo" | "email" | "vendorType"
+      "partyName" | "partyAddress" | "personName" | "phoneNo" | "email" | "vendorType" | "gstNo"
     >
   ) => void;
   deleteVendor: (id: string) => void;
+  upsertVendor: (vendor: Vendor) => void;
+  setVendors: (vendors: Vendor[]) => void;
   addUser: (user: User) => void;
   addReport: (report: Report) => void;
   deleteReport: (id: string) => void;
@@ -243,23 +246,33 @@ export const useAppStore = create<AppState>()(
         showAddedToast("Scrap entry");
       },
       addVendor: (vendor) => {
-        set((s) => ({ vendors: [...(s.vendors ?? []), vendor] }));
-        showAddedToast("Vendor");
+        set((s) => ({ vendors: [...(s.vendors ?? []), normalizeVendor(vendor)] }));
       },
       updateVendor: (id, updates) => {
         set((s) => ({
           vendors: (s.vendors ?? []).map((vendor) =>
-            vendor.id === id ? { ...vendor, ...updates } : vendor
+            vendor.id === id ? normalizeVendor({ ...vendor, ...updates }) : vendor
           ),
         }));
-        showSavedToast("Vendor");
       },
       deleteVendor: (id) => {
         set((s) => ({
           vendors: (s.vendors ?? []).filter((vendor) => vendor.id !== id),
         }));
-        showDeletedToast("Vendor");
       },
+      upsertVendor: (vendor) => {
+        set((s) => {
+          const list = s.vendors ?? [];
+          const normalized = normalizeVendor(vendor);
+          const hasVendor = list.some((item) => item.id === normalized.id);
+          return {
+            vendors: hasVendor
+              ? list.map((item) => (item.id === normalized.id ? normalized : item))
+              : [...list, normalized],
+          };
+        });
+      },
+      setVendors: (vendors) => set({ vendors: vendors.map(normalizeVendor) }),
       addUser: (user) => {
         set((s) => ({
           users: [...(s.users ?? []), user],
@@ -312,7 +325,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 50,
+      version: 51,
       skipHydration: true,
       partialize: (state) => ({
         navOrder: state.navOrder,
@@ -320,7 +333,26 @@ export const useAppStore = create<AppState>()(
         settings: state.settings,
         rolePermissions: state.rolePermissions,
         userPermissionOverrides: state.userPermissionOverrides,
+        vendors: (state.vendors ?? []).map(normalizeVendor),
+        seriesNames: state.seriesNames ?? [],
+        users: (state.users ?? []).map((user) => ({ ...user })),
       }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<AppState>;
+        const mockUserIds = new Set(mockUsers.map((user) => user.id));
+        return {
+          ...current,
+          ...saved,
+          vendors: mergeVendorLists([], saved.vendors ?? current.vendors ?? []),
+          users: [
+            ...mockUsers,
+            ...(saved.users ?? current.users ?? []).filter(
+              (user) => !mockUserIds.has(user.id)
+            ),
+          ],
+          seriesNames: saved.seriesNames ?? current.seriesNames ?? [],
+        };
+      },
       migrate: (persisted, fromVersion) => {
         const state = persisted as AppState & {
           hiddenNavHrefs?: string[];
@@ -330,10 +362,18 @@ export const useAppStore = create<AppState>()(
           userPermissionOverrides?: UserPermissionOverrides;
         };
 
-        if (fromVersion >= 50) {
+        if (fromVersion >= 51) {
+          const mockVendorIds = new Set(mockVendors.map((vendor) => vendor.id));
+          const userVendors = (state.vendors ?? [])
+            .filter((vendor) => !mockVendorIds.has(vendor.id))
+            .map(normalizeVendor);
+          const vendors = [...mockVendors.map(normalizeVendor), ...userVendors];
+          const mockUserIds = new Set(mockUsers.map((user) => user.id));
+          const customUsers = (state.users ?? []).filter((user) => !mockUserIds.has(user.id));
+          const users = [...mockUsers, ...customUsers];
           return {
             profiles: [],
-            seriesNames: [],
+            seriesNames: state.seriesNames ?? [],
             challans: [],
             stockInward: [],
             deletedStockInwardIds: [],
@@ -342,8 +382,46 @@ export const useAppStore = create<AppState>()(
             scrap: [],
             reports: [],
             purchaseOrders: [],
-            vendors: mockVendors.map(normalizeVendor),
-            users: mockUsers,
+            vendors,
+            users,
+            navOrder: state.navOrder ?? null,
+            hiddenNavHrefs: state.hiddenNavHrefs ?? [],
+            settings: {
+              ...DEFAULT_APP_SETTINGS,
+              ...(state.settings ?? {}),
+            },
+            rolePermissions: {
+              ...DEFAULT_ROLE_PERMISSIONS,
+              ...(state.rolePermissions ?? {}),
+              series:
+                state.rolePermissions?.series ?? DEFAULT_ROLE_PERMISSIONS.series,
+            },
+            userPermissionOverrides: state.userPermissionOverrides ?? {},
+          };
+        }
+
+        if (fromVersion >= 50) {
+          const mockVendorIds = new Set(mockVendors.map((vendor) => vendor.id));
+          const userVendors = (state.vendors ?? [])
+            .filter((vendor) => !mockVendorIds.has(vendor.id))
+            .map(normalizeVendor);
+          const vendors = [...mockVendors.map(normalizeVendor), ...userVendors];
+          const mockUserIds = new Set(mockUsers.map((user) => user.id));
+          const customUsers = (state.users ?? []).filter((user) => !mockUserIds.has(user.id));
+          const users = [...mockUsers, ...customUsers];
+          return {
+            profiles: [],
+            seriesNames: state.seriesNames ?? [],
+            challans: [],
+            stockInward: [],
+            deletedStockInwardIds: [],
+            consumption: [],
+            powderCoating: [],
+            scrap: [],
+            reports: [],
+            purchaseOrders: [],
+            vendors,
+            users,
             navOrder: state.navOrder ?? null,
             hiddenNavHrefs: state.hiddenNavHrefs ?? [],
             settings: {

@@ -29,18 +29,17 @@ import {
   createEmptyStockInwardLengthRow,
   createEmptyStockInwardProfileRow,
   calculateStockInwardAddFormTotalWeightKg,
-  DEFAULT_STOCK_INWARD_SUPPLIER,
-  STOCK_INWARD_SUPPLIERS,
   type StockInwardAddFormData,
-  type StockInwardSupplier,
 } from "@/lib/stock-inward-form";
+import { getDefaultStockInwardSupplier, getSupplierPartyNames } from "@/lib/vendor";
 import { getProfileCodeValue, getProfileDesignImage } from "@/lib/profile";
 import { cn, formatNumber } from "@/lib/utils";
-import type { Profile } from "@/types";
+import type { Profile, Vendor } from "@/types";
 
 interface StockInwardFormFieldsProps {
   form: UseFormReturn<StockInwardAddFormData>;
   profiles: Profile[];
+  vendors: Vendor[];
   isSubmitted: boolean;
   idPrefix?: string;
 }
@@ -611,6 +610,7 @@ function StockInwardAddProfileRows({
 export function StockInwardFormFields({
   form,
   profiles,
+  vendors,
   isSubmitted,
   idPrefix = "stock",
 }: StockInwardFormFieldsProps) {
@@ -621,6 +621,25 @@ export function StockInwardFormFields({
     formState: { errors },
   } = form;
   const selectedSupplier = watch("supplier");
+
+  const supplierOptions = useMemo(() => {
+    const names = getSupplierPartyNames(vendors);
+    const selected = selectedSupplier?.trim();
+    if (
+      selected &&
+      !names.some((name) => name.toLowerCase() === selected.toLowerCase())
+    ) {
+      return [selected, ...names].sort((a, b) => a.localeCompare(b));
+    }
+    return names;
+  }, [vendors, selectedSupplier]);
+
+  useEffect(() => {
+    const defaultSupplier = getDefaultStockInwardSupplier(vendors);
+    if (defaultSupplier && !selectedSupplier?.trim()) {
+      setValue("supplier", defaultSupplier, { shouldValidate: isSubmitted });
+    }
+  }, [vendors, selectedSupplier, setValue, isSubmitted]);
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -644,14 +663,24 @@ export function StockInwardFormFields({
       <div className="space-y-2">
         <Label>Supplier</Label>
         <SearchableSelect
-          value={selectedSupplier || DEFAULT_STOCK_INWARD_SUPPLIER}
+          value={selectedSupplier || ""}
           onValueChange={(value) =>
-            setValue("supplier", value as StockInwardSupplier, { shouldValidate: isSubmitted })
+            setValue("supplier", value, { shouldValidate: isSubmitted })
           }
-          options={stringSelectOptions(STOCK_INWARD_SUPPLIERS)}
-          placeholder="Select supplier"
+          options={stringSelectOptions(supplierOptions)}
+          placeholder={
+            supplierOptions.length === 0
+              ? "Add suppliers under Vendors → Suppliers"
+              : "Select supplier"
+          }
           searchPlaceholder="Search supplier…"
+          disabled={supplierOptions.length === 0}
         />
+        {supplierOptions.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Add supplier options under Vendors with type &quot;Suppliers&quot;.
+          </p>
+        )}
         {isSubmitted && errors.supplier && (
           <p className="text-sm text-destructive">{errors.supplier.message}</p>
         )}

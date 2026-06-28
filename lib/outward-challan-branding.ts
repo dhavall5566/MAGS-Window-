@@ -1,6 +1,7 @@
 import { COMPANY, DELIVERY_CHALLAN } from "@/lib/company";
+import { formatGstNo } from "@/lib/utils";
 import { formatPartyAddress } from "@/lib/vendor";
-import type { PowderCoatingChallan, Vendor } from "@/types";
+import type { OutwardChallan, PowderCoatingChallan, Vendor } from "@/types";
 
 export const MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc";
 
@@ -51,6 +52,87 @@ export function getDefaultOutwardChallanVendorId(vendors: Vendor[]): string {
   );
 }
 
+export function getDeliveryChallanFromVendors(vendors: Vendor[]): Vendor[] {
+  return vendors
+    .filter((vendor) => vendor.vendorType === "delivery_challan_from")
+    .sort((a, b) => a.partyName.localeCompare(b.partyName));
+}
+
+export function findDeliveryChallanFromVendorById(
+  vendors: Vendor[],
+  vendorId: string | undefined
+): Vendor | undefined {
+  if (!vendorId?.trim()) return undefined;
+  return getDeliveryChallanFromVendors(vendors).find((vendor) => vendor.id === vendorId);
+}
+
+export function findDeliveryChallanFromVendorByName(
+  vendors: Vendor[],
+  name: string | undefined
+): Vendor | undefined {
+  if (!name?.trim()) return undefined;
+  const normalized = name.trim().toLowerCase();
+  return getDeliveryChallanFromVendors(vendors).find((vendor) => {
+    const partyName = vendor.partyName.trim().toLowerCase();
+    const headerName = vendor.challanHeaderName?.trim().toLowerCase() ?? "";
+    return partyName === normalized || headerName === normalized;
+  });
+}
+
+/** Auto-select when exactly one delivery challan from vendor exists. */
+export function getDefaultDeliveryChallanFromVendorId(vendors: Vendor[]): string {
+  const options = getDeliveryChallanFromVendors(vendors);
+  return options.length === 1 ? options[0].id : "";
+}
+
+function getDefaultDeliveryChallanPdfBranding(): OutwardChallanPdfBranding {
+  return {
+    companyName: DELIVERY_CHALLAN.name,
+    addressLine1: DELIVERY_CHALLAN.addressLine1,
+    addressLine2: DELIVERY_CHALLAN.addressLine2,
+    email: DELIVERY_CHALLAN.email,
+    phone: COMPANY.contact.phone,
+    gstNo: DELIVERY_CHALLAN.gstNo,
+    signatoryLine: DELIVERY_CHALLAN.signatoryLine,
+    logoUrl: COMPANY.logo,
+  };
+}
+
+/** PDF header/contact/footer branding from a Delivery Challan From vendor record. */
+export function buildDeliveryChallanFromPdfBranding(vendor: Vendor): OutwardChallanPdfBranding {
+  const { line1, line2 } = splitVendorAddressForPdf(vendor);
+  const companyName = vendor.challanHeaderName?.trim() || vendor.partyName.trim();
+
+  return {
+    companyName,
+    addressLine1: line1,
+    addressLine2: line2,
+    email: vendor.challanEmail?.trim() || vendor.email?.trim() || "",
+    phone: vendor.challanPhone?.trim() || vendor.phoneNo?.trim() || "",
+    gstNo: formatGstNo(vendor.gstNo),
+    signatoryLine: vendor.challanSignatoryLine?.trim() || `For, ${companyName}`,
+    logoUrl: COMPANY.logo,
+  };
+}
+
+export function resolveOutwardDeliveryChallanPdfBranding(
+  challan: Pick<OutwardChallan, "deliveryChallanFromVendorId" | "deliveryChallanFromVendorName">,
+  vendors: Vendor[]
+): OutwardChallanPdfBranding {
+  const vendor =
+    findDeliveryChallanFromVendorById(vendors, challan.deliveryChallanFromVendorId) ??
+    findDeliveryChallanFromVendorByName(vendors, challan.deliveryChallanFromVendorName) ??
+    (challan.deliveryChallanFromVendorId
+      ? vendors.find((entry) => entry.id === challan.deliveryChallanFromVendorId)
+      : undefined);
+
+  if (vendor) {
+    return buildDeliveryChallanFromPdfBranding(vendor);
+  }
+
+  return getDefaultDeliveryChallanPdfBranding();
+}
+
 function splitVendorAddressForPdf(vendor: Vendor): { line1: string; line2: string } {
   if (vendor.challanAddressLine1?.trim()) {
     return {
@@ -77,16 +159,7 @@ export function getOutwardChallanPdfBranding(
   vendor: Vendor | undefined
 ): OutwardChallanPdfBranding {
   if (!vendor || isMagsOutwardChallanIssuer(vendor)) {
-    return {
-      companyName: DELIVERY_CHALLAN.name,
-      addressLine1: DELIVERY_CHALLAN.addressLine1,
-      addressLine2: DELIVERY_CHALLAN.addressLine2,
-      email: DELIVERY_CHALLAN.email,
-      phone: COMPANY.contact.phone,
-      gstNo: DELIVERY_CHALLAN.gstNo,
-      signatoryLine: DELIVERY_CHALLAN.signatoryLine,
-      logoUrl: COMPANY.logo,
-    };
+    return getDefaultDeliveryChallanPdfBranding();
   }
 
   const { line1, line2 } = splitVendorAddressForPdf(vendor);
@@ -98,9 +171,10 @@ export function getOutwardChallanPdfBranding(
     addressLine2: line2,
     email: vendor.challanEmail?.trim() || vendor.email?.trim() || "",
     phone: vendor.challanPhone?.trim() || vendor.phoneNo?.trim() || "",
-    gstNo: vendor.gstNo?.trim() || "",
+    gstNo: formatGstNo(vendor.gstNo),
     signatoryLine:
       vendor.challanSignatoryLine?.trim() || `For, ${companyName}`,
+    logoUrl: COMPANY.logo,
   };
 }
 

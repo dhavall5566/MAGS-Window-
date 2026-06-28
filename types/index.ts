@@ -163,7 +163,12 @@ export interface Scrap {
   disposition: string;
 }
 
-export type VendorType = "delivery" | "powder_coating" | "outward_challan";
+export type VendorType =
+  | "delivery"
+  | "powder_coating"
+  | "outward_challan"
+  | "delivery_challan_from"
+  | "suppliers";
 
 export interface Vendor {
   id: string;
@@ -209,6 +214,9 @@ export interface OutwardChallan extends ChallanVendorDetails {
   vehicleNumber: string;
   driverName: string;
   projectName?: string;
+  /** Issuer branding for delivery challan PDF header. */
+  deliveryChallanFromVendorId?: string;
+  deliveryChallanFromVendorName?: string;
   totalBundles?: number;
   totalWeightManual?: number;
   /** Sum of all line item profile weights (kg). */

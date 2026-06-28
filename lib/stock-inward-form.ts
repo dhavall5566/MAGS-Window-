@@ -7,42 +7,13 @@ import {
 } from "@/lib/stock-inward-calculations";
 import { getProfileDesignImage } from "@/lib/profile";
 import { normalizeStockLength } from "@/lib/stock-master";
-import type { Profile, StockInward } from "@/types";
+import type { Profile, StockInward, Vendor } from "@/types";
 
-export const STOCK_INWARD_SUPPLIERS = [
-  "Sreenathji-1",
-  "Sreenathji-2",
-  "Sreenathji-3",
-  "Sreenathji-4",
-  "Sreenathji-5",
-] as const;
+import { getDefaultStockInwardSupplier } from "@/lib/vendor";
 
-export type StockInwardSupplier = (typeof STOCK_INWARD_SUPPLIERS)[number];
-
-export const DEFAULT_STOCK_INWARD_SUPPLIER: StockInwardSupplier = STOCK_INWARD_SUPPLIERS[0];
-
-const LEGACY_STOCK_INWARD_SUPPLIERS = [
-  "Hindalco Industries",
-  "Jindal Aluminium",
-  "Balco Extrusions",
-  "National Aluminium",
-] as const;
-
-/** Map legacy mock supplier names to the current supplier list. */
-export function normalizeStockInwardSupplier(supplier: string | undefined | null): StockInwardSupplier {
-  const value = supplier?.trim() ?? "";
-  if (STOCK_INWARD_SUPPLIERS.includes(value as StockInwardSupplier)) {
-    return value as StockInwardSupplier;
-  }
-
-  const legacyIndex = LEGACY_STOCK_INWARD_SUPPLIERS.indexOf(
-    value as (typeof LEGACY_STOCK_INWARD_SUPPLIERS)[number]
-  );
-  if (legacyIndex >= 0) {
-    return STOCK_INWARD_SUPPLIERS[legacyIndex] ?? DEFAULT_STOCK_INWARD_SUPPLIER;
-  }
-
-  return DEFAULT_STOCK_INWARD_SUPPLIER;
+/** Preserve stored supplier names; suppliers are managed under Vendors → Suppliers. */
+export function normalizeStockInwardSupplier(supplier: string | undefined | null): string {
+  return supplier?.trim() ?? "";
 }
 
 export const stockInwardLengthRowSchema = z.object({
@@ -81,7 +52,7 @@ export function createEmptyStockInwardProfileRow(): StockInwardProfileRow {
 const sharedStockInwardFields = {
   date: z.string().min(1, "Date is required"),
   invoiceNo: z.string().trim(),
-  supplier: z.enum(STOCK_INWARD_SUPPLIERS, { message: "Supplier is required" }),
+  supplier: z.string().trim().min(1, "Supplier is required"),
   dyeCode: z.string().trim().min(1, "Die code is required"),
   profileCode: z.string().min(1, "Profile is required"),
   profileImage: z.string().optional().default(""),
@@ -101,7 +72,7 @@ export const stockInwardAddFormSchema = z
   .object({
     date: z.string().min(1, "Date is required"),
     invoiceNo: z.string().trim(),
-    supplier: z.enum(STOCK_INWARD_SUPPLIERS, { message: "Supplier is required" }),
+    supplier: z.string().trim().min(1, "Supplier is required"),
     profileRows: z.array(stockInwardProfileRowSchema).min(1, "Add at least one die code"),
   })
   .superRefine((data, ctx) => {
@@ -137,6 +108,15 @@ export const stockInwardAddFormSchema = z
   });
 
 export type StockInwardAddFormData = z.infer<typeof stockInwardAddFormSchema>;
+
+export function createEmptyStockInwardAddFormDefaults(vendors: Vendor[]): StockInwardAddFormData {
+  return {
+    date: new Date().toISOString().split("T")[0],
+    invoiceNo: "",
+    supplier: getDefaultStockInwardSupplier(vendors),
+    profileRows: [createEmptyStockInwardProfileRow()],
+  };
+}
 
 export function stockInwardEntryToAddFormData(
   entry: StockInward,

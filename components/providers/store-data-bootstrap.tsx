@@ -3,8 +3,10 @@
 import { startTransition, useEffect } from "react";
 import { fetchJson } from "@/lib/fetch-json";
 import { filterVisibleChallans, getManualConsumption } from "@/lib/challan-consumption";
+import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
 import { normalizeProfile } from "@/lib/profile";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
+import { mergeVendorLists } from "@/lib/vendor-merge";
 import { useAppStore } from "@/lib/store";
 import { seedFetchCacheFromAppStore } from "@/lib/seed-fetch-cache";
 import type {
@@ -15,6 +17,7 @@ import type {
   PurchaseOrder,
   SeriesName,
   StockInward,
+  Vendor,
 } from "@/types";
 
 function listSignature<T>(items: T[] | undefined, getId: (item: T) => string): string {
@@ -33,6 +36,7 @@ function shouldRefreshStore(
     purchaseOrders: PurchaseOrder[];
     challans: Challan[];
     powderCoating: PowderCoating[];
+    vendors: Vendor[];
   }
 ): boolean {
   return (
@@ -49,11 +53,13 @@ function shouldRefreshStore(
     listSignature(current.challans, (item) => item.id) !==
       listSignature(next.challans, (item) => item.id) ||
     listSignature(current.powderCoating, (item) => item.id) !==
-      listSignature(next.powderCoating, (item) => item.id)
+      listSignature(next.powderCoating, (item) => item.id) ||
+    listSignature(current.vendors, (item) => item.id) !==
+      listSignature(next.vendors, (item) => item.id)
   );
 }
 
-/** Refresh API data in background; persisted store + session cache show content immediately. */
+/** Refresh API data in background; merge with local store so new records are not dropped. */
 export function StoreDataBootstrap() {
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +69,9 @@ export function StoreDataBootstrap() {
         await useAppStore.persist.rehydrate();
       }
 
+      const current = useAppStore.getState();
+      const deletedStockInwardIds = new Set(current.deletedStockInwardIds ?? []);
+
       const [
         seriesResult,
         profilesResult,
@@ -71,6 +80,7 @@ export function StoreDataBootstrap() {
         purchaseOrdersResult,
         challansResult,
         powderCoatingResult,
+        vendorsResult,
       ] = await Promise.all([
         fetchJson<{ series?: SeriesName[] }>("/api/series"),
         fetchJson<{ profiles?: Profile[] }>("/api/profiles"),
@@ -79,26 +89,50 @@ export function StoreDataBootstrap() {
         fetchJson<{ purchaseOrders?: PurchaseOrder[] }>("/api/purchase-orders"),
         fetchJson<{ challans?: Challan[] }>("/api/challans"),
         fetchJson<{ powderCoating?: PowderCoating[] }>("/api/powder-coating"),
+        fetchJson<{ vendors?: Vendor[] }>("/api/vendors"),
       ]);
 
       if (cancelled) return;
 
-      const vendors = useAppStore.getState().vendors ?? [];
+      const mergedVendors = mergeVendorLists(
+        vendorsResult.vendors ?? [],
+        current.vendors ?? []
+      );
+
       const next = {
-        seriesNames: seriesResult.series ?? [],
-        profiles: (profilesResult.profiles ?? []).map(normalizeProfile),
-        stockInward: stockResult.inward ?? [],
-        consumption: getManualConsumption(consumptionResult.consumption ?? []),
-        purchaseOrders: purchaseOrdersResult.purchaseOrders ?? [],
-        challans: filterVisibleChallans(
-          (challansResult.challans ?? []).map((challan) =>
-            enrichChallanVendorDetails(challan, vendors)
-          )
+        seriesNames: mergeListsByIdPreferLocal(
+          seriesResult.series ?? [],
+          current.seriesNames ?? []
         ),
-        powderCoating: powderCoatingResult.powderCoating ?? [],
+        profiles: mergeListsByIdPreferLocal(
+          profilesResult.profiles ?? [],
+          current.profiles ?? []
+        ).map(normalizeProfile),
+        stockInward: mergeListsByIdPreferLocal(
+          stockResult.inward ?? [],
+          current.stockInward ?? []
+        ).filter((entry) => !deletedStockInwardIds.has(entry.id)),
+        consumption: mergeListsByIdPreferLocal(
+          getManualConsumption(consumptionResult.consumption ?? []),
+          getManualConsumption(current.consumption ?? [])
+        ),
+        purchaseOrders: mergeListsByIdPreferLocal(
+          purchaseOrdersResult.purchaseOrders ?? [],
+          current.purchaseOrders ?? []
+        ),
+        challans: filterVisibleChallans(
+          mergeListsByIdPreferLocal(
+            challansResult.challans ?? [],
+            current.challans ?? []
+          ).map((challan) => enrichChallanVendorDetails(challan, mergedVendors))
+        ),
+        powderCoating: mergeListsByIdPreferLocal(
+          powderCoatingResult.powderCoating ?? [],
+          current.powderCoating ?? []
+        ),
+        vendors: mergedVendors,
       };
 
-      const current = useAppStore.getState();
       if (!shouldRefreshStore(current, next)) return;
 
       startTransition(() => {

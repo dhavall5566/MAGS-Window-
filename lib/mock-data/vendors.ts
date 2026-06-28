@@ -174,6 +174,36 @@ const vendorRows: Pick<
     partyAddress: "Plot 12, GIDC Industrial Estate, Ahmedabad, Gujarat",
     vendorType: "powder_coating",
   },
+  {
+    id: "ven-023",
+    partyName: "Sreenathji-1",
+    partyAddress: "Ahmedabad, Gujarat",
+    vendorType: "suppliers",
+  },
+  {
+    id: "ven-024",
+    partyName: "Sreenathji-2",
+    partyAddress: "Ahmedabad, Gujarat",
+    vendorType: "suppliers",
+  },
+  {
+    id: "ven-025",
+    partyName: "Sreenathji-3",
+    partyAddress: "Ahmedabad, Gujarat",
+    vendorType: "suppliers",
+  },
+  {
+    id: "ven-026",
+    partyName: "Sreenathji-4",
+    partyAddress: "Ahmedabad, Gujarat",
+    vendorType: "suppliers",
+  },
+  {
+    id: "ven-027",
+    partyName: "Sreenathji-5",
+    partyAddress: "Ahmedabad, Gujarat",
+    vendorType: "suppliers",
+  },
 ];
 
 export const mockVendors: Vendor[] = vendorRows.map((vendor) => ({

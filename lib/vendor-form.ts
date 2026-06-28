@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { VendorType } from "@/types";
 
-export const vendorTypeSchema = z.enum(["delivery", "powder_coating", "outward_challan"]);
+export const vendorTypeSchema = z.enum([
+  "delivery",
+  "powder_coating",
+  "outward_challan",
+  "delivery_challan_from",
+  "suppliers",
+]);
 
 export const vendorFormSchema = z.object({
   partyName: z.string().min(1, "Party name is required"),
@@ -31,4 +37,6 @@ export const VENDOR_TYPE_OPTIONS: { value: VendorType; label: string }[] = [
   { value: "delivery", label: "Outward Challan" },
   { value: "outward_challan", label: "Powder Coating" },
   { value: "powder_coating", label: "Powder Coating Challan" },
+  { value: "delivery_challan_from", label: "Delivery Challan From" },
+  { value: "suppliers", label: "Suppliers" },
 ];

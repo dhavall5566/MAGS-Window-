@@ -159,7 +159,7 @@ export function buildPurchaseOrder(
     date: data.date,
     vendorName: data.vendorName.trim(),
     vendorAddress: data.vendorAddress?.trim() ?? "",
-    gstNo: data.gstNo?.trim() || undefined,
+    gstNo: data.gstNo?.trim().toUpperCase() || undefined,
     personName: data.personName?.trim() || undefined,
     contactNo: data.contactNo?.trim() || undefined,
     remarks: data.remarks?.trim() || undefined,

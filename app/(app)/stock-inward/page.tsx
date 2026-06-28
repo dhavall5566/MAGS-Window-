@@ -66,6 +66,7 @@ export default function StockInwardPage() {
   const revertStockInwardAdds = useAppStore((s) => s.revertStockInwardAdds);
   const deleteStockInward = useAppStore((s) => s.deleteStockInward);
   const storeProfiles = useAppStore((s) => s.profiles);
+  const vendors = useAppStore((s) => s.vendors);
   const [apiInward, setApiInward] = useCachedOrStoreList(
     "/api/stock",
     "inward",
@@ -407,6 +408,7 @@ export default function StockInwardPage() {
       >
         <AddStockInwardDialog
           profiles={profiles}
+          vendors={vendors}
           existingInward={inward}
           onSave={handleAddStock}
         />
@@ -424,6 +426,7 @@ export default function StockInwardPage() {
       <EditStockInwardDialog
         entry={editingEntry}
         profiles={profiles}
+        vendors={vendors}
         existingInward={inward}
         open={editOpen}
         onOpenChange={setEditOpen}

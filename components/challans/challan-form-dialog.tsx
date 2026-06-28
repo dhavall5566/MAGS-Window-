@@ -62,8 +62,11 @@ import {
 import { mergeStockInward, normalizeStockLength } from "@/lib/stock-master";
 import {
   findOutwardChallanIssuerById,
+  getDefaultDeliveryChallanFromVendorId,
   getDefaultOutwardChallanVendorId,
+  getDeliveryChallanFromVendors,
   getOutwardChallanIssuerVendors,
+  findDeliveryChallanFromVendorById,
 } from "@/lib/outward-challan-branding";
 import { formatNumber, generateId } from "@/lib/utils";
 import { DEFAULT_APP_SETTINGS } from "@/lib/app-settings";
@@ -98,6 +101,9 @@ const commonChallanSchema = z.object({
 });
 
 const outwardSchema = commonChallanSchema.extend({
+  deliveryChallanFromVendorId: z
+    .string()
+    .min(1, "Delivery Challan From is required"),
   vehicleNumber: z.string().trim().min(1, "Vehicle number is required"),
   driverName: z.string().trim().min(1, "Driver name is required"),
   projectName: z.string().optional(),
@@ -277,6 +283,7 @@ export function ChallanFormDialog({
           }
         : {
             projectName: "",
+            deliveryChallanFromVendorId: getDefaultDeliveryChallanFromVendorId(vendors),
             totalBundles: "",
             totalWeightManual: "",
           }),
@@ -290,6 +297,7 @@ export function ChallanFormDialog({
   });
 
   const coatingValues = isPowderCoating ? (form.watch() as CoatingForm) : null;
+  const outwardValues = !isPowderCoating ? (form.watch() as OutwardForm) : null;
   const vendorName = form.watch("vendorName");
   const watchedItems = form.watch("items");
 
@@ -343,6 +351,11 @@ export function ChallanFormDialog({
 
   const outwardChallanIssuerVendors = useMemo(
     () => getOutwardChallanIssuerVendors(vendors),
+    [vendors]
+  );
+
+  const deliveryChallanFromVendors = useMemo(
+    () => getDeliveryChallanFromVendors(vendors),
     [vendors]
   );
 
@@ -474,6 +487,18 @@ export function ChallanFormDialog({
   }, [open, isPowderCoating, fields.length, recalcPowderCoatingItemRates]);
 
   useEffect(() => {
+    if (!open || isPowderCoating) return;
+    const defaultId = getDefaultDeliveryChallanFromVendorId(vendors);
+    if (!defaultId) return;
+    const current = (form.getValues() as OutwardForm).deliveryChallanFromVendorId;
+    if (!current) {
+      form.setValue("deliveryChallanFromVendorId" as "deliveryChallanFromVendorId", defaultId, {
+        shouldValidate: false,
+      });
+    }
+  }, [open, isPowderCoating, vendors, form]);
+
+  useEffect(() => {
     if (!open) return;
     if (challanToEdit) {
       form.reset({
@@ -498,6 +523,11 @@ export function ChallanFormDialog({
             }
           : {
               projectName: getOutwardChallanProjectName(challanToEdit),
+              deliveryChallanFromVendorId:
+                challanToEdit.type === "outward"
+                  ? challanToEdit.deliveryChallanFromVendorId ??
+                    getDefaultDeliveryChallanFromVendorId(vendors)
+                  : getDefaultDeliveryChallanFromVendorId(vendors),
               totalBundles:
                 challanToEdit.type === "outward" && challanToEdit.totalBundles != null
                   ? String(challanToEdit.totalBundles)
@@ -542,6 +572,7 @@ export function ChallanFormDialog({
             }
           : {
               projectName: "",
+              deliveryChallanFromVendorId: getDefaultDeliveryChallanFromVendorId(vendors),
               totalBundles: "",
               totalWeightManual: "",
             }),
@@ -615,7 +646,7 @@ export function ChallanFormDialog({
       vendorAddress: data.vendorAddress,
       vendorPersonName: data.vendorPersonName,
       vendorContact: data.vendorContact,
-      vendorGstNo: data.vendorGstNo,
+      vendorGstNo: data.vendorGstNo?.trim().toUpperCase() ?? "",
       vehicleNumber: data.vehicleNumber?.trim() ?? "",
       driverName: data.driverName?.trim() ?? "",
       items,
@@ -647,9 +678,16 @@ export function ChallanFormDialog({
             return sum + Math.max(0, Number(item.weight) || 0);
           }, 0) * 100
         ) / 100;
+      const deliveryIssuer = findDeliveryChallanFromVendorById(
+        vendors,
+        outwardData.deliveryChallanFromVendorId
+      );
       challan = {
         ...base,
         type: "outward",
+        deliveryChallanFromVendorId: outwardData.deliveryChallanFromVendorId,
+        deliveryChallanFromVendorName:
+          deliveryIssuer?.challanHeaderName?.trim() || deliveryIssuer?.partyName,
         projectName: outwardData.projectName?.trim() || undefined,
         totalBundles,
         totalWeightManual,
@@ -715,6 +753,36 @@ export function ChallanFormDialog({
       <TooltipProvider delayDuration={150}>
           <FormSection title="Challan details">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {type === "outward" && (
+              <FormField
+                label="Delivery Challan From"
+                required
+                className="sm:col-span-2"
+                error={resolveFieldError(
+                  form.formState.isSubmitted,
+                  (form.formState.errors as FieldErrors<OutwardForm>).deliveryChallanFromVendorId
+                )}
+              >
+                <SearchableSelect
+                  value={outwardValues?.deliveryChallanFromVendorId || undefined}
+                  onValueChange={(value) =>
+                    form.setValue("deliveryChallanFromVendorId" as "deliveryChallanFromVendorId", value, {
+                      shouldValidate: true,
+                    })
+                  }
+                  options={deliveryChallanFromVendors.map((vendor) => ({
+                    value: vendor.id,
+                    label: vendor.challanHeaderName?.trim() || vendor.partyName,
+                  }))}
+                  placeholder="Select delivery challan from"
+                  searchPlaceholder="Search delivery challan from…"
+                  aria-invalid={fieldInvalid(
+                    form.formState.isSubmitted,
+                    (form.formState.errors as FieldErrors<OutwardForm>).deliveryChallanFromVendorId
+                  )}
+                />
+              </FormField>
+            )}
             {isPowderCoating && (
               <FormField
                 label="Powder Coating"

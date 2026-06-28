@@ -1,5 +1,6 @@
 import type { Challan, Vendor, VendorType } from "@/types";
 import { VENDOR_TYPE_OPTIONS } from "@/lib/vendor-form";
+import { formatGstNo } from "@/lib/utils";
 import {
   isMagsOutwardChallanIssuer,
   MAGS_OUTWARD_CHALLAN_VENDOR_ID,
@@ -78,7 +79,7 @@ export function getVendorChallanDetails(vendor: Vendor): {
     vendorAddress: formatPartyAddress(vendor.partyAddress),
     vendorPersonName: vendor.personName?.trim() ?? "",
     vendorContact: vendor.phoneNo?.trim() ?? "",
-    vendorGstNo: vendor.gstNo?.trim() ?? "",
+    vendorGstNo: formatGstNo(vendor.gstNo),
   };
 }
 
@@ -109,6 +110,24 @@ export function getVendorPartyNames(vendors: Vendor[]): string[] {
   ].sort((a, b) => a.localeCompare(b));
 }
 
+export function getSupplierVendors(vendors: Vendor[]): Vendor[] {
+  return vendors
+    .filter((vendor) => vendor.vendorType === "suppliers")
+    .sort((a, b) => a.partyName.localeCompare(b.partyName));
+}
+
+export function getSupplierPartyNames(vendors: Vendor[]): string[] {
+  return getSupplierVendors(vendors)
+    .map((vendor) => vendor.partyName.trim())
+    .filter(Boolean);
+}
+
+/** Auto-select when only one supplier vendor exists. */
+export function getDefaultStockInwardSupplier(vendors: Vendor[]): string {
+  const names = getSupplierPartyNames(vendors);
+  return names.length === 1 ? names[0] : "";
+}
+
 export function normalizeVendor(vendor: Vendor): Vendor {
   return {
     ...vendor,
@@ -116,7 +135,7 @@ export function normalizeVendor(vendor: Vendor): Vendor {
     personName: vendor.personName ?? "",
     phoneNo: vendor.phoneNo ?? "",
     email: vendor.email?.trim() ?? "",
-    gstNo: vendor.gstNo?.trim() ?? "",
+    gstNo: formatGstNo(vendor.gstNo),
     vendorType: normalizeVendorType(vendor),
   };
 }

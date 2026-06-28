@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { formatDate, formatGstNo, formatNumber } from "@/lib/utils";
 import { getCachedJson } from "@/lib/fetch-json";
 import { useCachedApiList } from "@/hooks/use-cached-api-list";
 import { mergeProfiles } from "@/lib/profile";
@@ -108,7 +108,7 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
         )}
         {order.gstNo && (
           <div>
-            <span className="text-muted-foreground">GST No.:</span> {order.gstNo}
+            <span className="text-muted-foreground">GST No.:</span> {formatGstNo(order.gstNo)}
           </div>
         )}
         {order.personName && (
@@ -311,7 +311,7 @@ export default function PurchaseOrdersPage() {
         className: "whitespace-nowrap font-mono text-xs",
         align: "left",
         hideBelow: "lg",
-        render: (row) => row.gstNo || "\u2014",
+        render: (row) => formatGstNo(row.gstNo) || "\u2014",
       },
       {
         key: "items",

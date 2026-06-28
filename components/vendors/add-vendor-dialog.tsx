@@ -58,7 +58,7 @@ export function AddVendorDialog({ onSave }: AddVendorDialogProps) {
       personName: data.personName?.trim() ?? "",
       phoneNo: data.phoneNo?.trim() ?? "",
       email: data.email?.trim() ?? "",
-      gstNo: data.gstNo?.trim() ?? "",
+      gstNo: data.gstNo?.trim().toUpperCase() ?? "",
       vendorType: data.vendorType,
     });
     closeDialog();

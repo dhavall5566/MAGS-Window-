@@ -5,6 +5,7 @@ import { BRAND } from "./brand";
 import { COMPANY, PURCHASE_ORDER } from "./company";
 import { findProfileByCode, getProfileDesignImage, getProfileDyeCode } from "./profile";
 import { getPurchaseOrderTotalWeight, resolvePurchaseOrderItemWeight } from "./purchase-order-form";
+import { formatGstNo, formatPdfDate } from "./utils";
 
 const C = {
   primary: [...BRAND.primaryRgb] as [number, number, number],
@@ -14,14 +15,6 @@ const C = {
   headFill: [238, 240, 246] as [number, number, number],
   white: [255, 255, 255] as [number, number, number],
 } as const;
-
-function formatPoDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr || "-";
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  return `${day}.${month}.${d.getFullYear()}`;
-}
 
 function formatWeight(value: number): string {
   if (!value) return "";
@@ -96,11 +89,7 @@ function fitImageBox(
   };
 }
 
-type CachedImage = {
-  dataUrl: string;
-  width: number;
-  height: number;
-};
+type CachedImage = string | null;
 
 export async function generatePurchaseOrderPDF(
   order: PurchaseOrder,
@@ -220,12 +209,12 @@ export async function generatePurchaseOrderPDF(
   const afterAddressRows = [
     ["Person Name", order.personName?.trim() || ""],
     ["Contact No.", order.contactNo?.trim() || ""],
-    ["GST No.", order.gstNo?.trim() || ""],
+    ["GST No.", formatGstNo(order.gstNo)],
   ] as const;
   const leftBlockH = rowH + addressH + rowH * afterAddressRows.length;
   const metaRows = [
     ["P.O. No", order.poNumber?.trim() || ""],
-    ["Date", formatPoDate(order.date)],
+    ["Date", formatPdfDate(order.date)],
   ] as const;
   const metaBlockH = Math.max(leftBlockH, rowH * metaRows.length);
 
@@ -268,22 +257,12 @@ export async function generatePurchaseOrderPDF(
 
   // ---- Items table ----
   const items = order.items ?? [];
-  const imageCache = new Map<string, CachedImage | null>();
+  const imageCache = new Map<string, CachedImage>();
   await Promise.all(
     items.map(async (item) => {
       const src = item.profileImage?.trim() || getProfileDesignImage(findProfileByCode(profiles, item.profileCode) ?? ({} as Profile));
       if (!src || imageCache.has(src)) return;
-      const dataUrl = await resolveImageDataUrl(src);
-      if (!dataUrl) {
-        imageCache.set(src, null);
-        return;
-      }
-      const dims = await getImageDimensions(dataUrl);
-      imageCache.set(src, {
-        dataUrl,
-        width: dims?.width ?? 1,
-        height: dims?.height ?? 1,
-      });
+      imageCache.set(src, await resolveImageDataUrl(src));
     })
   );
 
@@ -292,6 +271,13 @@ export async function generatePurchaseOrderPDF(
     if (direct) return direct;
     const profile = findProfileByCode(profiles, item.profileCode);
     return profile ? getProfileDesignImage(profile) : "";
+  };
+
+  const resolveItemProfileName = (item: PurchaseOrder["items"][number]): string => {
+    const direct = item.profileName?.trim();
+    if (direct) return direct;
+    const profile = findProfileByCode(profiles, item.profileCode);
+    return profile?.name?.trim() || "-";
   };
 
   const resolveItemDyeCode = (item: PurchaseOrder["items"][number]): string => {
@@ -304,6 +290,7 @@ export async function generatePurchaseOrderPDF(
   const headLabels = [
     "SR.NO",
     "DIA DRAWING",
+    "PROFILE NAME",
     "Die Code",
     "KG/MTR",
     "UOM",
@@ -311,7 +298,8 @@ export async function generatePurchaseOrderPDF(
     "QTY",
     "TOTAL WEIGHT",
   ];
-  const baseColWidths = [14, 78, 20, 18, 14, 18, 14, 28];
+  // Match delivery challan profile drawing column width; add profile name beside it.
+  const baseColWidths = [14, 20, 38, 18, 16, 12, 16, 12, 26];
   const baseSum = baseColWidths.reduce((s, w) => s + w, 0);
   const scale = contentWidth / baseSum;
   const scaled = baseColWidths.map((w) => w * scale);
@@ -320,6 +308,7 @@ export async function generatePurchaseOrderPDF(
   const aligns: ("left" | "center")[] = [
     "center",
     "center",
+    "left",
     "center",
     "center",
     "center",
@@ -335,6 +324,7 @@ export async function generatePurchaseOrderPDF(
   const body = items.map((item, index) => [
     String(index + 1),
     "",
+    resolveItemProfileName(item),
     resolveItemDyeCode(item),
     formatKgPerMeter(item.kgPerMeter),
     item.uom?.trim() || "MM",
@@ -352,7 +342,7 @@ export async function generatePurchaseOrderPDF(
     body,
     foot: [
       [
-        { content: "TOTAL", colSpan: 7, styles: { halign: "center", fontStyle: "bold" } },
+        { content: "TOTAL", colSpan: 8, styles: { halign: "center", fontStyle: "bold" } },
         { content: formatWeight(totalWeight) || "0KG", styles: { halign: "center", fontStyle: "bold" } },
       ],
     ],
@@ -394,22 +384,19 @@ export async function generatePurchaseOrderPDF(
       const item = items[data.row.index];
       if (!item) return;
       const src = resolveItemImage(item);
-      const cached = src ? imageCache.get(src) : null;
+      const imageData = src ? imageCache.get(src) : null;
       const pad = 2;
       const boxW = data.cell.width - pad * 2;
       const boxH = data.cell.height - pad * 2;
-      if (cached) {
+      if (imageData) {
         try {
-          const fitted = fitImageBox(cached.width, cached.height, boxW, boxH);
-          const x = data.cell.x + pad + (boxW - fitted.width) / 2;
-          const y = data.cell.y + pad + (boxH - fitted.height) / 2;
           doc.addImage(
-            cached.dataUrl,
-            imageFormat(cached.dataUrl),
-            x,
-            y,
-            fitted.width,
-            fitted.height,
+            imageData,
+            imageFormat(imageData),
+            data.cell.x + pad,
+            data.cell.y + pad,
+            boxW,
+            boxH,
             undefined,
             "FAST"
           );
