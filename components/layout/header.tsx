@@ -8,7 +8,6 @@ import {
   Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,10 +52,6 @@ export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: Header
       <div className="flex-1" />
 
       <div className="flex shrink-0 items-center gap-2">
-        <Badge variant="warning" className="hidden sm:flex gap-1">
-          Demo Mode Only
-        </Badge>
-
         <Button
           variant="ghost"
           size="icon"

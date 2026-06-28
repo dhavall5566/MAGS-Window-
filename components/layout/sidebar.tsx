@@ -7,6 +7,7 @@ import { canAccessModule } from "@/lib/role-permissions";
 import { getOrderedNavItems, isNavTabActive } from "@/lib/nav-items";
 import { useAppStore } from "@/lib/store";
 import { COMPANY } from "@/lib/company";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { Logo } from "@/components/brand/logo";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { useMobileSidebarInert } from "@/hooks/use-mobile-sidebar-inert";
@@ -90,6 +91,9 @@ export function Sidebar({ userId, role, open, onClose }: SidebarProps) {
             {COMPANY.name}
             <br />
             {COMPANY.tagline}
+          </p>
+          <p className="mt-1.5 text-center text-[10px] tabular-nums text-sidebar-foreground/55">
+            {APP_VERSION_LABEL}
           </p>
         </div>
       </aside>
