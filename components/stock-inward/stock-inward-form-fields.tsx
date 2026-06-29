@@ -94,6 +94,7 @@ function LengthRowFields({
   index,
   lengthInMeter,
   totalWeightKg,
+  totalWeightManualKg,
   totalProfiles,
   kgPerMeter,
   isSubmitted,
@@ -102,24 +103,28 @@ function LengthRowFields({
   onRemove,
   onLengthChange,
   onWeightChange,
+  onManualWeightChange,
   onProfilesChange,
 }: {
   idPrefix: string;
   index: number;
   lengthInMeter: number;
   totalWeightKg: number;
+  totalWeightManualKg?: number;
   totalProfiles: number;
   kgPerMeter: number;
   isSubmitted: boolean;
   rowErrors?: {
     lengthInMeter?: { message?: string };
     totalWeightKg?: { message?: string };
+    totalWeightManualKg?: { message?: string };
     totalProfiles?: { message?: string };
   };
   showRemove: boolean;
   onRemove?: () => void;
   onLengthChange: (value: number) => void;
   onWeightChange: (value: number) => void;
+  onManualWeightChange: (value: number | undefined) => void;
   onProfilesChange: (value: number) => void;
 }) {
   return (
@@ -140,7 +145,7 @@ function LengthRowFields({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-length-meter-${index}`}>Length (m)</Label>
           <Input
@@ -197,6 +202,28 @@ function LengthRowFields({
           />
           {isSubmitted && rowErrors?.totalWeightKg && (
             <p className="text-sm text-destructive">{rowErrors.totalWeightKg.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-total-weight-manual-${index}`}>
+            Total Weight Manual (Kg)
+          </Label>
+          <Input
+            id={`${idPrefix}-total-weight-manual-${index}`}
+            type="number"
+            step="any"
+            min="0"
+            className="tabular-nums"
+            placeholder="Enter manual weight"
+            value={totalWeightManualKg ?? ""}
+            onChange={(event) => {
+              const raw = event.target.value.trim();
+              onManualWeightChange(raw ? Number(raw) || undefined : undefined);
+            }}
+          />
+          {isSubmitted && rowErrors?.totalWeightManualKg && (
+            <p className="text-sm text-destructive">{rowErrors.totalWeightManualKg.message}</p>
           )}
         </div>
 
@@ -297,8 +324,10 @@ function ProfileLengthRows({
         {fields.map((field, index) => {
           const rowLength = Number(lengthRows?.[index]?.lengthInMeter) || 0;
           const rowWeight = Number(lengthRows?.[index]?.totalWeightKg) || 0;
+          const rowManualWeight = lengthRows?.[index]?.totalWeightManualKg;
           const rowProfiles = Number(lengthRows?.[index]?.totalProfiles) || 0;
           const rowErrors = profileErrors?.lengthRows?.[index];
+          const basePath = `profileRows.${profileIndex}.lengthRows.${index}` as const;
 
           return (
             <LengthRowFields
@@ -307,6 +336,7 @@ function ProfileLengthRows({
               index={index}
               lengthInMeter={rowLength}
               totalWeightKg={rowWeight}
+              totalWeightManualKg={rowManualWeight}
               totalProfiles={rowProfiles}
               kgPerMeter={kgPerMeter}
               isSubmitted={isSubmitted}
@@ -316,7 +346,6 @@ function ProfileLengthRows({
               onLengthChange={(value) => syncRow(index, { lengthInMeter: value })}
               onWeightChange={(value) => {
                 const synced = syncStockInwardFromWeight(value, rowLength, kgPerMeter);
-                const basePath = `profileRows.${profileIndex}.lengthRows.${index}` as const;
                 setValue(`${basePath}.totalWeightKg`, synced.totalWeightKg, {
                   shouldValidate: isSubmitted,
                   shouldDirty: true,
@@ -326,9 +355,14 @@ function ProfileLengthRows({
                   shouldDirty: true,
                 });
               }}
+              onManualWeightChange={(value) => {
+                setValue(`${basePath}.totalWeightManualKg`, value, {
+                  shouldValidate: isSubmitted,
+                  shouldDirty: true,
+                });
+              }}
               onProfilesChange={(value) => {
                 const synced = syncStockInwardFromProfiles(value, rowLength, kgPerMeter);
-                const basePath = `profileRows.${profileIndex}.lengthRows.${index}` as const;
                 setValue(`${basePath}.totalProfiles`, synced.totalProfiles, {
                   shouldValidate: isSubmitted,
                   shouldDirty: true,

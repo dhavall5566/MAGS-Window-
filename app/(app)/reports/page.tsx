@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Eye, FileDown, Trash2, BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
@@ -10,12 +10,14 @@ import { ReportPreviewDialog } from "@/components/reports/report-preview-dialog"
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useDateRangeFilter } from "@/components/shared/date-range-filter";
+import { matchesPeriodOverlap } from "@/lib/date-filter";
 import { formatDate } from "@/lib/utils";
-import { fetchJson } from "@/lib/fetch-json";
 import type { ReportApiData } from "@/lib/report-content";
 import { getReportTypeLabel } from "@/lib/report-form";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
+import { useReportsAnalytics } from "@/hooks/use-reports-analytics";
 import { createReportRecordApi, deleteReportRecordApi } from "@/lib/app-settings-api";
 import { alertSyncFailure } from "@/lib/sync-alert";
 import type { Report } from "@/types";
@@ -33,7 +35,7 @@ const ReportChartPanel = dynamic(
 
 export default function ReportsPage() {
   const { canCreate, canRead, canDelete } = useModuleCrud("reports");
-  const [data, setData] = useState<Record<string, unknown>>({});
+  const data = useReportsAnalytics();
   const [previewReport, setPreviewReport] = useState<Report | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [chartReport, setChartReport] = useState<Report | null>(null);
@@ -68,10 +70,6 @@ export default function ReportsPage() {
     [addReport, chartReport?.id, deleteReport]
   );
 
-  useEffect(() => {
-    fetchJson<Record<string, unknown>>("/api/reports").then(setData);
-  }, []);
-
   const summary = useMemo(
     () => (data.summary ?? {}) as Record<string, number>,
     [data.summary]
@@ -104,6 +102,22 @@ export default function ReportsPage() {
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ),
     [reports]
+  );
+
+  const {
+    dateFrom,
+    dateTo,
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+  } = useDateRangeFilter({ label: "Period" });
+
+  const filteredReports = useMemo(
+    () =>
+      sortedReports.filter((report) =>
+        matchesPeriodOverlap(report.dateFrom, report.dateTo, dateFrom, dateTo)
+      ),
+    [sortedReports, dateFrom, dateTo]
   );
 
   const reportApiData = useMemo<ReportApiData>(
@@ -263,7 +277,7 @@ export default function ReportsPage() {
 
       <DataTable
         tableId="reports"
-        data={sortedReports}
+        data={filteredReports}
         columns={reportColumns}
         searchFilter={(row, query) => {
           const q = query.toLowerCase();
@@ -275,6 +289,9 @@ export default function ReportsPage() {
         }}
         searchPlaceholder="Search report no, name, or type..."
         emptyMessage="No reports yet. Click Create Report to generate one."
+        filterContent={dateFilterContent}
+        filtersActive={dateFiltersActive}
+        onClearFilters={clearDateFilters}
       />
 
       {chartReport && (

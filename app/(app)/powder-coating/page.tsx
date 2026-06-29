@@ -4,6 +4,10 @@ import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
+import {
+  combineTableFilters,
+  useDateRangeFilter,
+} from "@/components/shared/date-range-filter";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { PowderCoatingRowActions } from "@/components/powder-coating/powder-coating-row-actions";
 import { formatDate, formatNumber } from "@/lib/utils";
@@ -72,10 +76,25 @@ export default function PowderCoatingPage() {
   const { filterContent, filtersActive, clearFilters, matchesCode } =
     useProfileCodeFilters(profileCodes);
 
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter();
+
   const filteredData = useMemo(
-    () => (data ?? []).filter((row) => matchesCode(row.profileCode ?? "")),
-    [data, matchesCode]
+    () =>
+      (data ?? []).filter(
+        (row) => matchesCode(row.profileCode ?? "") && matchesDate(row.date)
+      ),
+    [data, matchesCode, matchesDate]
   );
+
+  const handleClearAllFilters = useCallback(() => {
+    clearFilters();
+    clearDateFilters();
+  }, [clearFilters, clearDateFilters]);
 
   const handleEdit = useCallback((entry: PowderCoating) => {
     setEditingEntry(entry);
@@ -271,9 +290,9 @@ export default function PowderCoatingPage() {
         columns={columns}
         searchFilter={handlePowderCoatingSearch}
         searchPlaceholder="Search batch, profile code, name, or vendor..."
-        filterContent={filterContent}
-        filtersActive={filtersActive}
-        onClearFilters={clearFilters}
+        filterContent={combineTableFilters(filterContent, dateFilterContent)}
+        filtersActive={filtersActive || dateFiltersActive}
+        onClearFilters={handleClearAllFilters}
       />
       <EditPowderCoatingDialog
         entry={editingEntry}

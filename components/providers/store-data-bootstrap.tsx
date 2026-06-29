@@ -1,20 +1,20 @@
 "use client";
 
-import { startTransition, useEffect } from "react";
+import { useEffect } from "react";
 import { fetchAppSettingsApi } from "@/lib/app-settings-api";
 import { fetchJson } from "@/lib/fetch-json";
-import { filterVisibleChallans, getManualConsumption } from "@/lib/challan-consumption";
-import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
+import { filterVisibleChallans } from "@/lib/challan-consumption";
 import { normalizeProfile } from "@/lib/profile";
+import { normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
 import { normalizeModuleRolePermissions } from "@/lib/role-permissions";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { mergeUsersLists } from "@/lib/user-merge";
 import { mergeVendorLists } from "@/lib/vendor-merge";
 import { useAppStore } from "@/lib/store";
+import { markBootstrapComplete } from "@/lib/bootstrap-state";
 import { seedFetchCacheFromAppStore } from "@/lib/seed-fetch-cache";
 import type {
   Challan,
-  Consumption,
   PowderCoating,
   Profile,
   PurchaseOrder,
@@ -37,7 +37,6 @@ function shouldRefreshStore(
     seriesNames: SeriesName[];
     profiles: Profile[];
     stockInward: StockInward[];
-    consumption: Consumption[];
     purchaseOrders: PurchaseOrder[];
     challans: Challan[];
     powderCoating: PowderCoating[];
@@ -53,8 +52,6 @@ function shouldRefreshStore(
       listSignature(next.profiles, (item) => item.id) ||
     listSignature(current.stockInward, (item) => item.id) !==
       listSignature(next.stockInward, (item) => item.id) ||
-    listSignature(current.consumption, (item) => item.id) !==
-      listSignature(next.consumption, (item) => item.id) ||
     listSignature(current.purchaseOrders, (item) => item.id) !==
       listSignature(next.purchaseOrders, (item) => item.id) ||
     listSignature(current.challans, (item) => item.id) !==
@@ -70,112 +67,79 @@ function shouldRefreshStore(
   );
 }
 
-/** Refresh API data in background; merge with local store so new records are not dropped. */
+/** Load API data into the store on startup. Database is the source of truth for entity lists. */
 export function StoreDataBootstrap() {
   useEffect(() => {
     let cancelled = false;
 
     const bootstrap = async () => {
-      if (!useAppStore.persist.hasHydrated()) {
-        await useAppStore.persist.rehydrate();
-      }
+      try {
+        const rehydratePromise = useAppStore.persist.hasHydrated()
+          ? Promise.resolve()
+          : useAppStore.persist.rehydrate();
 
-      const current = useAppStore.getState();
-      const deletedStockInwardIds = new Set(current.deletedStockInwardIds ?? []);
+        const [
+          seriesResult,
+          profilesResult,
+          stockResult,
+          purchaseOrdersResult,
+          challansResult,
+          powderCoatingResult,
+          vendorsResult,
+          usersResult,
+          appSettingsResult,
+        ] = await Promise.all([
+          fetchJson<{ series?: SeriesName[] }>("/api/series"),
+          fetchJson<{ profiles?: Profile[] }>("/api/profiles"),
+          fetchJson<{ inward?: StockInward[] }>("/api/stock"),
+          fetchJson<{ purchaseOrders?: PurchaseOrder[] }>("/api/purchase-orders"),
+          fetchJson<{ challans?: Challan[] }>("/api/challans"),
+          fetchJson<{ powderCoating?: PowderCoating[] }>("/api/powder-coating"),
+          fetchJson<{ vendors?: Vendor[] }>("/api/vendors"),
+          fetchJson<{ users?: User[] }>("/api/users"),
+          fetchAppSettingsApi(),
+          rehydratePromise,
+        ]);
 
-      const [
-        seriesResult,
-        profilesResult,
-        stockResult,
-        consumptionResult,
-        purchaseOrdersResult,
-        challansResult,
-        powderCoatingResult,
-        vendorsResult,
-        usersResult,
-        appSettingsResult,
-      ] = await Promise.all([
-        fetchJson<{ series?: SeriesName[] }>("/api/series"),
-        fetchJson<{ profiles?: Profile[] }>("/api/profiles"),
-        fetchJson<{ inward?: StockInward[] }>("/api/stock"),
-        fetchJson<{ consumption?: Consumption[] }>("/api/consumption"),
-        fetchJson<{ purchaseOrders?: PurchaseOrder[] }>("/api/purchase-orders"),
-        fetchJson<{ challans?: Challan[] }>("/api/challans"),
-        fetchJson<{ powderCoating?: PowderCoating[] }>("/api/powder-coating"),
-        fetchJson<{ vendors?: Vendor[] }>("/api/vendors"),
-        fetchJson<{ users?: User[] }>("/api/users"),
-        fetchAppSettingsApi(),
-      ]);
+        if (cancelled) return;
 
-      if (cancelled) return;
+        const mergedVendors = mergeVendorLists(vendorsResult.vendors ?? [], []);
 
-      const mergedVendors = mergeVendorLists(
-        vendorsResult.vendors ?? [],
-        current.vendors ?? []
-      );
-
-      const next = {
-        seriesNames: mergeListsByIdPreferLocal(
-          seriesResult.series ?? [],
-          current.seriesNames ?? []
-        ),
-        profiles: mergeListsByIdPreferLocal(
-          profilesResult.profiles ?? [],
-          current.profiles ?? []
-        ).map(normalizeProfile),
-        stockInward: mergeListsByIdPreferLocal(
-          stockResult.inward ?? [],
-          current.stockInward ?? []
-        ).filter((entry) => !deletedStockInwardIds.has(entry.id)),
-        consumption: mergeListsByIdPreferLocal(
-          getManualConsumption(consumptionResult.consumption ?? []),
-          getManualConsumption(current.consumption ?? [])
-        ),
-        purchaseOrders: mergeListsByIdPreferLocal(
-          purchaseOrdersResult.purchaseOrders ?? [],
-          current.purchaseOrders ?? []
-        ),
-        challans: filterVisibleChallans(
-          (challansResult.challans ?? []).map((challan) =>
-            enrichChallanVendorDetails(challan, mergedVendors)
-          )
-        ),
-        powderCoating: mergeListsByIdPreferLocal(
-          powderCoatingResult.powderCoating ?? [],
-          current.powderCoating ?? []
-        ),
-        vendors: mergedVendors,
-        users: mergeUsersLists(usersResult.users ?? [], current.users ?? []),
-        reports: mergeListsByIdPreferLocal(
-          appSettingsResult.reports ?? [],
-          current.reports ?? []
-        ),
-        navOrder: current.navOrder ?? appSettingsResult.navOrder ?? null,
-        hiddenNavHrefs:
-          current.hiddenNavHrefs?.length
-            ? current.hiddenNavHrefs
-            : (appSettingsResult.hiddenNavHrefs ?? []),
-        rolePermissions: current.rolePermissions
-          ? current.rolePermissions
-          : appSettingsResult.rolePermissions
+        const next = {
+          seriesNames: seriesResult.series ?? [],
+          profiles: (profilesResult.profiles ?? []).map(normalizeProfile),
+          stockInward: (stockResult.inward ?? []).map(normalizeStockInwardRecord),
+          deletedStockInwardIds: [],
+          consumption: [],
+          purchaseOrders: purchaseOrdersResult.purchaseOrders ?? [],
+          challans: filterVisibleChallans(
+            (challansResult.challans ?? []).map((challan) =>
+              enrichChallanVendorDetails(challan, mergedVendors)
+            )
+          ),
+          powderCoating: powderCoatingResult.powderCoating ?? [],
+          vendors: mergedVendors,
+          users: mergeUsersLists(usersResult.users ?? [], []),
+          reports: appSettingsResult.reports ?? [],
+          navOrder: appSettingsResult.navOrder ?? null,
+          hiddenNavHrefs: appSettingsResult.hiddenNavHrefs ?? [],
+          rolePermissions: appSettingsResult.rolePermissions
             ? normalizeModuleRolePermissions(appSettingsResult.rolePermissions)
-            : current.rolePermissions,
-        userPermissionOverrides:
-          Object.keys(current.userPermissionOverrides ?? {}).length > 0
-            ? current.userPermissionOverrides
-            : (appSettingsResult.userPermissionOverrides ?? {}),
-        settings: current.settings ?? appSettingsResult.settings ?? current.settings,
-      };
+            : useAppStore.getState().rolePermissions,
+          userPermissionOverrides: appSettingsResult.userPermissionOverrides ?? {},
+          settings: appSettingsResult.settings ?? useAppStore.getState().settings,
+        };
 
-      if (!shouldRefreshStore(current, next)) return;
-
-      startTransition(() => {
-        useAppStore.setState({
-          ...next,
-          deletedStockInwardIds: current.deletedStockInwardIds ?? [],
-        });
+        const current = useAppStore.getState();
+        if (shouldRefreshStore(current, next)) {
+          useAppStore.setState(next);
+        }
         seedFetchCacheFromAppStore(useAppStore.getState());
-      });
+      } finally {
+        if (!cancelled) {
+          markBootstrapComplete();
+        }
+      }
     };
 
     void bootstrap();

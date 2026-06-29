@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/lib/store";
 import {
   buildDashboardLiveData,
@@ -24,21 +25,16 @@ const CHART_DATA_KEYS: Record<DashboardChartId, keyof DashboardChartsData> = {
 };
 
 function useDashboardSourceData() {
-  const profiles = useAppStore((s) => s.profiles);
-  const stockInward = useAppStore((s) => s.stockInward);
-  const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
-  const challans = useAppStore((s) => s.challans);
-  const powderCoating = useAppStore((s) => s.powderCoating);
-  const lowStockThresholdKg = useAppStore((s) => s.settings.lowStockThresholdKg);
-
-  return {
-    profiles: profiles ?? [],
-    stockInward: stockInward ?? [],
-    deletedStockInwardIds: deletedStockInwardIds ?? [],
-    challans: challans ?? [],
-    powderCoating: powderCoating ?? [],
-    lowStockThresholdKg,
-  };
+  return useAppStore(
+    useShallow((s) => ({
+      profiles: s.profiles ?? [],
+      stockInward: s.stockInward ?? [],
+      deletedStockInwardIds: s.deletedStockInwardIds ?? [],
+      challans: s.challans ?? [],
+      powderCoating: s.powderCoating ?? [],
+      lowStockThresholdKg: s.settings.lowStockThresholdKg,
+    }))
+  );
 }
 
 export function useDashboardLiveInput(
@@ -69,7 +65,18 @@ export function useDashboardLiveInput(
       }, []),
       lowStockThresholdKg: source.lowStockThresholdKg,
     }),
-    [source, apiProfiles, apiInward, apiChallans, apiPowderCoating]
+    [
+      source.profiles,
+      source.stockInward,
+      source.deletedStockInwardIds,
+      source.challans,
+      source.powderCoating,
+      source.lowStockThresholdKg,
+      apiProfiles,
+      apiInward,
+      apiChallans,
+      apiPowderCoating,
+    ]
   );
 }
 

@@ -83,6 +83,8 @@ export interface StockInward {
   profileImage?: string;
   /** Total inward weight in kg. */
   totalWeightKg: number;
+  /** Optional manually entered total weight in kg. */
+  totalWeightManualKg?: number;
   /** Length in meters. */
   length: number;
   kgPerMeter: number;
@@ -307,6 +309,7 @@ export interface StockLedgerEntry {
   /** Movement weight in kg (alias: totalWeightKg). */
   weight: number;
   totalWeightKg: number;
+  totalWeightManualKg?: number;
   length: number;
   kgPerMeter: number;
   totalProfiles: number;

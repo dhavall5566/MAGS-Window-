@@ -166,6 +166,10 @@ export function resolveStockInwardProfile(
 
 export function normalizeStockInwardRecord(entry: StockInward): StockInward {
   const totalWeightKg = entry.totalWeightKg ?? entry.weight ?? 0;
+  const totalWeightManualKg =
+    entry.totalWeightManualKg != null && entry.totalWeightManualKg > 0
+      ? Math.round(entry.totalWeightManualKg * 100) / 100
+      : undefined;
   const lengthInMeter = Number(entry.length) || 0;
   const kgPerMeter = entry.kgPerMeter ?? STOCK_INWARD_KG_PER_METER;
   const quantity =
@@ -178,11 +182,16 @@ export function normalizeStockInwardRecord(entry: StockInward): StockInward {
     invoiceNo: entry.invoiceNo?.trim() || undefined,
     profileImage: entry.profileImage?.trim() || undefined,
     totalWeightKg,
+    totalWeightManualKg,
     length: lengthInMeter,
     kgPerMeter,
     quantity,
     weight: totalWeightKg,
   };
+
+  if (!totalWeightManualKg) {
+    delete normalized.totalWeightManualKg;
+  }
 
   delete (normalized as { lengthFeet?: number }).lengthFeet;
   delete (normalized as { rate?: number }).rate;

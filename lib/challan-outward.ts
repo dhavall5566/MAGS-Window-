@@ -3,9 +3,9 @@ import {
   getPowderCoatingChallanRate,
   getPrimaryProfileLength,
   getProfileDesignImage,
-  getProfileLengthOptions,
   weightFromConversionUnit,
 } from "@/lib/profile";
+import { normalizeStockLength } from "@/lib/stock-master";
 import type { Challan, ChallanItem, OutwardChallan, PowderCoatingChallan, Profile } from "@/types";
 
 export function getOutwardChallans(challans: Challan[]): OutwardChallan[] {
@@ -25,13 +25,13 @@ export function mapOutwardItemsToCoatingFormItems(
 ) {
   return (items ?? []).map((item) => {
     const profile = findProfileByCode(profiles, item.profileCode);
-    const lengthOptions = profile ? getProfileLengthOptions(profile) : [];
+    const outwardLength = normalizeStockLength(Number(item.length) || 0);
     const length =
-      profile && lengthOptions.includes(item.length)
-        ? item.length
+      outwardLength > 0
+        ? outwardLength
         : profile
           ? getPrimaryProfileLength(profile)
-          : item.length;
+          : 0;
 
     return {
       profileCode: item.profileCode,

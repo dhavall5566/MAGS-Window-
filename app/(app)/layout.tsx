@@ -3,6 +3,7 @@
 import "@/lib/app-data-init";
 import { AppShell } from "@/components/layout/app-shell";
 import { StoreDataBootstrap } from "@/components/providers/store-data-bootstrap";
+import { RoutePrefetcher } from "@/components/providers/route-prefetcher";
 import { StoreHydration } from "@/components/providers/store-hydration";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -10,6 +11,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <AppShell>
       <StoreHydration />
       <StoreDataBootstrap />
+      <RoutePrefetcher />
       <main
         id="main-content"
         tabIndex={-1}

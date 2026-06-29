@@ -11,6 +11,7 @@ export interface StockMasterRow {
   profileName: string;
   stockKg: number;
   totalWeightKg: number;
+  totalWeightManualKg?: number;
   length: number;
   kgPerMeter: number;
   totalProfiles: number;
@@ -22,6 +23,7 @@ interface StockMasterBucket {
   length: number;
   kgPerMeter: number;
   inwardKg: number;
+  inwardManualKg: number;
 }
 
 interface StockMasterMovementTotals {
@@ -86,9 +88,13 @@ export function buildStockMasterRows(
       length,
       kgPerMeter: entry.kgPerMeter ?? STOCK_INWARD_KG_PER_METER,
       inwardKg: 0,
+      inwardManualKg: 0,
     };
 
     bucket.inwardKg += getInwardWeight(entry);
+    if (entry.totalWeightManualKg != null && entry.totalWeightManualKg > 0) {
+      bucket.inwardManualKg += entry.totalWeightManualKg;
+    }
     bucket.kgPerMeter = entry.kgPerMeter ?? bucket.kgPerMeter;
     buckets.set(key, bucket);
   }
@@ -113,6 +119,10 @@ export function buildStockMasterRows(
         bucket.length,
         bucket.kgPerMeter
       );
+      const totalWeightManualKg =
+        bucket.inwardManualKg > 0 && bucket.inwardKg > 0
+          ? Math.round((bucket.inwardManualKg * stockKg) / bucket.inwardKg * 100) / 100
+          : undefined;
 
       return {
         id: key,
@@ -120,6 +130,7 @@ export function buildStockMasterRows(
         profileName: bucket.profileName,
         stockKg,
         totalWeightKg: stockKg,
+        totalWeightManualKg,
         length: bucket.length,
         kgPerMeter: bucket.kgPerMeter,
         totalProfiles,
@@ -166,6 +177,7 @@ export function buildStockLedgerRows(
         balance: 0,
         weight: totalWeightKg,
         totalWeightKg,
+        totalWeightManualKg: entry.totalWeightManualKg,
         length,
         kgPerMeter,
         totalProfiles,

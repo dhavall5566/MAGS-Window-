@@ -1,20 +1,34 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
-import { AddSeriesDialog } from "@/components/series/add-series-dialog";
-import { EditSeriesDialog } from "@/components/series/edit-series-dialog";
 import { SeriesRowActions } from "@/components/series/series-row-actions";
 import { Badge } from "@/components/ui/badge";
+import {
+  combineTableFilters,
+  useDateRangeFilter,
+} from "@/components/shared/date-range-filter";
 import { useSeriesNameFilters, matchesSeriesSearch } from "@/components/shared/use-series-name-filters";
 import { syncListCache } from "@/lib/list-cache-sync";
 import { createSeriesApi, deleteSeriesApi, updateSeriesApi } from "@/lib/series-api";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { getSeriesLabel, resolveSeriesProfileCount } from "@/lib/series";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import type { SeriesName } from "@/types";
+
+const AddSeriesDialog = dynamic(
+  () => import("@/components/series/add-series-dialog").then((m) => m.AddSeriesDialog),
+  { ssr: false }
+);
+
+const EditSeriesDialog = dynamic(
+  () => import("@/components/series/edit-series-dialog").then((m) => m.EditSeriesDialog),
+  { ssr: false }
+);
 
 export default function SeriesNamePage() {
   const { canCreate, canUpdate, canDelete } = useModuleCrud("series");
@@ -39,10 +53,25 @@ export default function SeriesNamePage() {
   const { filterContent, filtersActive, clearFilters, matchesSeries } =
     useSeriesNameFilters(series ?? []);
 
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter({ label: "Created" });
+
   const filteredSeries = useMemo(
-    () => (series ?? []).filter(matchesSeries),
-    [series, matchesSeries]
+    () =>
+      (series ?? []).filter(
+        (row) => matchesSeries(row) && matchesDate(row.createdAt)
+      ),
+    [series, matchesSeries, matchesDate]
   );
+
+  const handleClearAllFilters = useCallback(() => {
+    clearFilters();
+    clearDateFilters();
+  }, [clearFilters, clearDateFilters]);
 
   const handleSeriesSearch = useCallback((row: SeriesName, query: string) => {
     return matchesSeriesSearch(row, query);
@@ -53,23 +82,34 @@ export default function SeriesNamePage() {
       addSeriesName(entry);
       syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
       const saved = await createSeriesApi(entry);
-      if (saved) {
-        updateSeriesName(saved.id, saved);
+      if (!saved) {
+        deleteSeriesName(entry.id);
         syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
+        alertSyncFailure("Could not save series to the server.");
+        return;
       }
+      updateSeriesName(saved.id, saved);
+      syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
     },
-    [addSeriesName, updateSeriesName]
+    [addSeriesName, deleteSeriesName, updateSeriesName]
   );
 
   const handleUpdateSeries = useCallback(
     async (id: string, updates: Partial<SeriesName>) => {
+      const current = (useAppStore.getState().seriesNames ?? []).find((item) => item.id === id);
+      if (!current) return;
+
       updateSeriesName(id, updates);
       syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
       const saved = await updateSeriesApi(id, updates);
-      if (saved) {
-        updateSeriesName(saved.id, saved);
+      if (!saved) {
+        updateSeriesName(id, current);
         syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
+        alertSyncFailure("Could not update series on the server.");
+        return;
       }
+      updateSeriesName(saved.id, saved);
+      syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
     },
     [updateSeriesName]
   );
@@ -217,9 +257,9 @@ export default function SeriesNamePage() {
         columns={columns}
         searchFilter={handleSeriesSearch}
         searchPlaceholder="Search series name, number, or full series..."
-        filterContent={filterContent}
-        filtersActive={filtersActive}
-        onClearFilters={clearFilters}
+        filterContent={combineTableFilters(filterContent, dateFilterContent)}
+        filtersActive={filtersActive || dateFiltersActive}
+        onClearFilters={handleClearAllFilters}
       />
       <EditSeriesDialog
         series={editingSeries}

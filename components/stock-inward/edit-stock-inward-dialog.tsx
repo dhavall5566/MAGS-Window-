@@ -73,8 +73,13 @@ export function EditStockInwardDialog({
     );
     if (entries.length === 0) return;
 
-    await onSave(entries);
     onOpenChange(false);
+
+    try {
+      await onSave(entries);
+    } catch {
+      // handleUpdateStock restores prior rows and shows an alert on failure.
+    }
   };
 
   return (

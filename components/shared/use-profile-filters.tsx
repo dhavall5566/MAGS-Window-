@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import {
   getProfileCodeValue,
@@ -30,17 +30,20 @@ export function useProfileFilters(profiles: Profile[]) {
 
   const filtersActive = Boolean(seriesFilter || codeFilter);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSeriesFilter("");
     setCodeFilter("");
-  };
+  }, []);
 
-  const matchesProfile = (profile: Profile) => {
-    const { code } = getProfileSeriesAndCode(profile);
-    if (!profileMatchesSeriesFilter(profile, seriesFilter)) return false;
-    if (codeFilter && code !== codeFilter) return false;
-    return true;
-  };
+  const matchesProfile = useCallback(
+    (profile: Profile) => {
+      const { code } = getProfileSeriesAndCode(profile);
+      if (!profileMatchesSeriesFilter(profile, seriesFilter)) return false;
+      if (codeFilter && code !== codeFilter) return false;
+      return true;
+    },
+    [seriesFilter, codeFilter]
+  );
 
   const filterContent = (
     <ProfileCodeFilters

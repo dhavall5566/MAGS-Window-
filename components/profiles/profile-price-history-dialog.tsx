@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useDateRangeFilter } from "@/components/shared/date-range-filter";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +40,18 @@ export function ProfilePriceHistoryDialog({
     [profile?.priceHistory]
   );
 
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter();
+
+  const filteredHistory = useMemo(
+    () => history.filter((row) => matchesDate(row.date)),
+    [history, matchesDate]
+  );
+
   const columns = useMemo<Column<PriceHistoryRow>[]>(
     () => [
       {
@@ -72,12 +85,15 @@ export function ProfilePriceHistoryDialog({
         </DialogHeader>
         <DataTable
           tableId="profile-price-history"
-          data={history}
+          data={filteredHistory}
           columns={columns}
           emptyMessage="No price changes recorded yet."
           showResultCount={false}
-          pagination={history.length > 10}
+          pagination={filteredHistory.length > 10}
           defaultPageSize={10}
+          filterContent={dateFilterContent}
+          filtersActive={dateFiltersActive}
+          onClearFilters={clearDateFilters}
         />
       </DialogContent>
     </Dialog>

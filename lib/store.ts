@@ -11,7 +11,6 @@ import {
   prepareVendorList,
 } from "@/lib/vendor-merge";
 import { getManualConsumption, filterVisibleChallans } from "@/lib/challan-consumption";
-import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
 import { normalizeProfile } from "@/lib/profile";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "@/lib/app-settings";
 import {
@@ -377,7 +376,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 54,
+      version: 55,
       skipHydration: true,
       partialize: (state) => ({
         navOrder: state.navOrder,
@@ -385,76 +384,27 @@ export const useAppStore = create<AppState>()(
         settings: state.settings,
         rolePermissions: state.rolePermissions,
         userPermissionOverrides: state.userPermissionOverrides,
-        vendors: (state.vendors ?? []).map(normalizeVendor),
-        seriesNames: state.seriesNames ?? [],
-        profiles: (state.profiles ?? []).map(normalizeProfile),
-        stockInward: (state.stockInward ?? []).map((entry) =>
-          normalizeStockInwardRecord({
-            ...entry,
-            supplier: normalizeStockInwardSupplier(entry.supplier),
-            dyeCode: entry.dyeCode?.trim() ?? "",
-          })
-        ),
-        deletedStockInwardIds: state.deletedStockInwardIds ?? [],
-        consumption: getManualConsumption(state.consumption ?? []),
-        powderCoating: state.powderCoating ?? [],
-        scrap: state.scrap ?? [],
-        purchaseOrders: state.purchaseOrders ?? [],
-        reports: state.reports ?? [],
-        users: (state.users ?? []).map((user) => ({ ...user })),
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<AppState>;
-        const mockUserIds = new Set(mockUsers.map((user) => user.id));
-        const mergedChallans = filterVisibleChallans(current.challans ?? []);
-        const mergedDeletedStockInwardIds = [
-          ...new Set([
-            ...(saved.deletedStockInwardIds ?? []),
-            ...(current.deletedStockInwardIds ?? []),
-          ]),
-        ];
         return {
           ...current,
-          ...saved,
-          vendors: mergeVendorLists([], saved.vendors ?? current.vendors ?? []),
-          challans: mergedChallans,
-          users: [
-            ...mockUsers,
-            ...(saved.users ?? current.users ?? []).filter(
-              (user) => !mockUserIds.has(user.id)
-            ),
-          ],
-          seriesNames: mergeListsByIdPreferLocal(
-            saved.seriesNames ?? [],
-            current.seriesNames ?? []
-          ),
-          profiles: mergeListsByIdPreferLocal(
-            (saved.profiles ?? []).map(normalizeProfile),
-            (current.profiles ?? []).map(normalizeProfile)
-          ).map(normalizeProfile),
-          stockInward: mergeListsByIdPreferLocal(
-            saved.stockInward ?? [],
-            current.stockInward ?? []
-          ).filter((entry) => !mergedDeletedStockInwardIds.includes(entry.id)),
-          deletedStockInwardIds: mergedDeletedStockInwardIds,
-          consumption: mergeListsByIdPreferLocal(
-            getManualConsumption(saved.consumption ?? []),
-            getManualConsumption(current.consumption ?? [])
-          ),
-          powderCoating: mergeListsByIdPreferLocal(
-            saved.powderCoating ?? [],
-            current.powderCoating ?? []
-          ),
-          scrap: mergeListsByIdPreferLocal(saved.scrap ?? [], current.scrap ?? []),
-          purchaseOrders: mergeListsByIdPreferLocal(
-            saved.purchaseOrders ?? [],
-            current.purchaseOrders ?? []
-          ),
-          reports: mergeListsByIdPreferLocal(saved.reports ?? [], current.reports ?? []),
+          navOrder: saved.navOrder ?? current.navOrder,
+          hiddenNavHrefs: saved.hiddenNavHrefs ?? current.hiddenNavHrefs,
+          settings: {
+            ...DEFAULT_APP_SETTINGS,
+            ...current.settings,
+            ...(saved.settings ?? {}),
+          },
           rolePermissions: normalizeModuleRolePermissions(
-            migrateRolePermissions(saved.rolePermissions as Record<string, unknown>)
+            migrateRolePermissions(
+              (saved.rolePermissions as Record<string, unknown> | undefined) ??
+                current.rolePermissions
+            )
           ),
-          userPermissionOverrides: migrateUserPermissionOverrides(saved.userPermissionOverrides),
+          userPermissionOverrides: migrateUserPermissionOverrides(
+            saved.userPermissionOverrides ?? current.userPermissionOverrides
+          ),
         };
       },
       migrate: (persisted, fromVersion) => {
@@ -472,6 +422,26 @@ export const useAppStore = create<AppState>()(
         const migratedUserOverrides = migrateUserPermissionOverrides(
           state.userPermissionOverrides
         );
+
+        if (fromVersion === 54) {
+          return {
+            ...state,
+            profiles: [],
+            seriesNames: [],
+            challans: [],
+            stockInward: [],
+            deletedStockInwardIds: [],
+            consumption: [],
+            powderCoating: [],
+            scrap: [],
+            purchaseOrders: [],
+            reports: [],
+            vendors: prepareVendorList(mockVendors.map(normalizeVendor)),
+            users: mockUsers,
+            rolePermissions: migratedRolePermissions,
+            userPermissionOverrides: migratedUserOverrides,
+          };
+        }
 
         if (fromVersion === 53) {
           return {

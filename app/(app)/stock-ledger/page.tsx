@@ -4,22 +4,17 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
+import {
+  combineTableFilters,
+  useDateRangeFilter,
+} from "@/components/shared/date-range-filter";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
-import { buildStockLedgerRows, mergeStockInward } from "@/lib/stock-master";
-import { formatStockLength, normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
+import { formatStockLength } from "@/lib/stock-inward-calculations";
 import { formatDate, formatNumber } from "@/lib/utils";
-import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
-import { enrichChallanVendorDetails } from "@/lib/vendor";
-import { useAppStore } from "@/lib/store";
-import type { Challan, StockInward, StockLedgerEntry } from "@/types";
-
-const selectStoreInward = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.stockInward ?? [];
-const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.challans ?? [];
+import { useStockLedgerRows } from "@/hooks/use-stock-derived-data";
+import type { StockLedgerEntry } from "@/types";
 
 type LedgerTypeFilter = "all" | StockLedgerEntry["type"];
 
@@ -31,47 +26,8 @@ const LEDGER_TYPE_TABS: { value: LedgerTypeFilter; label: string }[] = [
 ];
 
 export default function StockLedgerPage() {
-  const storeInward = useAppStore((s) => s.stockInward);
-  const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
-  const storeChallans = useAppStore((s) => s.challans);
-  const vendors = useAppStore((s) => s.vendors);
-  const [apiInward, setApiInward] = useCachedOrStoreList(
-    "/api/stock",
-    "inward",
-    selectStoreInward,
-    normalizeStockInwardRecord
-  );
-  const [apiChallans, setApiChallans] = useCachedOrStoreList(
-    "/api/challans",
-    "challans",
-    selectStoreChallans
-  );
+  const ledger = useStockLedgerRows();
   const [activeTypeTab, setActiveTypeTab] = useState<LedgerTypeFilter>("all");
-
-  const inward = useMemo(
-    () =>
-      mergeStockInward(
-        apiInward,
-        (storeInward ?? []).map(normalizeStockInwardRecord),
-        deletedStockInwardIds ?? []
-      ),
-    [apiInward, storeInward, deletedStockInwardIds]
-  );
-
-  const consumption = useMemo(() => {
-    const enrichedStore = (storeChallans ?? []).map((challan) =>
-      enrichChallanVendorDetails(challan, vendors ?? [])
-    );
-    const enrichedApi = apiChallans.map((challan) =>
-      enrichChallanVendorDetails(challan, vendors ?? [])
-    );
-    return buildOutwardConsumptionFromChallans(enrichedApi, enrichedStore);
-  }, [apiChallans, storeChallans, vendors]);
-
-  const ledger = useMemo(
-    () => buildStockLedgerRows(inward, consumption),
-    [inward, consumption]
-  );
 
   const profileCodes = useMemo(
     () => ledger.map((row) => row.profileCode).filter(Boolean),
@@ -81,18 +37,30 @@ export default function StockLedgerPage() {
   const { filterContent, filtersActive, clearFilters, matchesCode } =
     useProfileCodeFilters(profileCodes);
 
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter();
+
   const filteredLedger = useMemo(() => {
-    const byProfile = ledger.filter((row) => matchesCode(row.profileCode));
+    const byProfile = ledger.filter(
+      (row) => matchesCode(row.profileCode) && matchesDate(row.date)
+    );
     if (activeTypeTab === "all") return byProfile;
     return byProfile.filter((row) => row.type === activeTypeTab);
-  }, [ledger, matchesCode, activeTypeTab]);
+  }, [ledger, matchesCode, matchesDate, activeTypeTab]);
 
   const handleClearFilters = useCallback(() => {
     clearFilters();
+    clearDateFilters();
     setActiveTypeTab("all");
-  }, [clearFilters]);
+  }, [clearFilters, clearDateFilters]);
 
   const typeFilterActive = activeTypeTab !== "all";
+
+  const tableFilters = combineTableFilters(filterContent, dateFilterContent);
 
   const handleLedgerSearch = useCallback((row: StockLedgerEntry, query: string) => {
     const q = query.toLowerCase();
@@ -176,6 +144,16 @@ export default function StockLedgerPage() {
         render: (row: StockLedgerEntry) => formatNumber(row.totalWeightKg ?? row.weight ?? 0, 2),
       },
       {
+        key: "totalWeightManualKg",
+        header: "Total Weight Manual (Kg)",
+        className: "whitespace-nowrap tabular-nums",
+        align: "center" as const,
+        render: (row: StockLedgerEntry) =>
+          row.totalWeightManualKg != null
+            ? formatNumber(row.totalWeightManualKg, 2)
+            : "—",
+      },
+      {
         key: "length",
         header: "Length (m)",
         className: "whitespace-nowrap tabular-nums",
@@ -239,8 +217,8 @@ export default function StockLedgerPage() {
         columns={columns}
         searchFilter={handleLedgerSearch}
         searchPlaceholder="Search by profile code, name, or reference..."
-        filterContent={filterContent}
-        filtersActive={filtersActive || typeFilterActive}
+        filterContent={tableFilters}
+        filtersActive={filtersActive || dateFiltersActive || typeFilterActive}
         onClearFilters={handleClearFilters}
       />
     </div>

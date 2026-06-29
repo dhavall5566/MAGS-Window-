@@ -62,6 +62,17 @@ export function formatNumber(n: number | undefined | null, decimals = 0): string
   });
 }
 
+/** Format a decimal without unnecessary trailing zeros (e.g. 19.66 not 19.6600). */
+export function formatDecimalTrimmed(
+  value: number | undefined | null,
+  maxDecimals = 4
+): string {
+  const n = Number(value);
+  if (!n || Number.isNaN(n)) return "";
+  const fixed = n.toFixed(maxDecimals);
+  return fixed.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
+
 export function generateId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }

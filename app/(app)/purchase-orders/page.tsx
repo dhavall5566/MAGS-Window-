@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { useDateRangeFilter } from "@/components/shared/date-range-filter";
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -181,6 +182,18 @@ export default function PurchaseOrdersPage() {
   const orders = useMemo(
     () => mergePurchaseOrders(apiOrders, storeOrders ?? []),
     [apiOrders, storeOrders]
+  );
+
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter();
+
+  const filteredOrders = useMemo(
+    () => orders.filter((order) => matchesDate(order.date)),
+    [orders, matchesDate]
   );
 
   const showLoading = isLoading && orders.length === 0;
@@ -466,13 +479,16 @@ export default function PurchaseOrdersPage() {
 
       <DataTable
         tableId="purchase-orders"
-        data={orders}
+        data={filteredOrders}
         columns={columns}
         isLoading={showLoading}
         loadingMessage="Loading purchase orders…"
         searchFilter={handleSearch}
         searchPlaceholder="Search PO number, party, or profile code..."
         emptyMessage="No purchase orders yet. Create one to get started."
+        filterContent={dateFilterContent}
+        filtersActive={dateFiltersActive}
+        onClearFilters={clearDateFilters}
       />
     </div>
   );

@@ -73,7 +73,7 @@ import {
   getDeliveryChallanFromVendors,
   getOutwardChallanIssuerVendors,
 } from "@/lib/outward-challan-branding";
-import { cn, formatNumber, generateId, metersToFeet } from "@/lib/utils";
+import { cn, formatDecimalTrimmed, formatNumber, generateId, metersToFeet } from "@/lib/utils";
 import { DEFAULT_APP_SETTINGS } from "@/lib/app-settings";
 import { useAppStore } from "@/lib/store";
 import {
@@ -666,111 +666,114 @@ export function ChallanFormDialog({
       }
     }
 
-    const coatingManualRate =
-      isPowderCoating && Number((data as CoatingForm).coatingRate) > 0
-        ? Number((data as CoatingForm).coatingRate)
-        : undefined;
-    const items =
-      isPowderCoating
-        ? data.items.map((item) => {
-            const profile = findProfileInMap(profileByCode, item.profileCode);
-            return {
-              ...item,
-              rate: profile
-                ? getPowderCoatingChallanRate(profile, undefined, coatingManualRate)
-                : item.rate ?? 0,
-            };
-          })
-        : data.items.map(({ rate: _rate, ...item }) => {
-            const profile = findProfileInMap(profileByCode, item.profileCode);
-            const length = Number(item.length) || 0;
-            const qty = Number(item.qty) || 0;
-            return {
-              ...item,
-              weight:
-                profile && length > 0 && qty > 0
-                  ? weightFromConversionUnit(profile, { length, qty })
-                  : Math.max(0, Number(item.weight) || 0),
-            };
-          });
-
-    const base = {
-      id: challanToEdit?.id ?? createChallanIdRef.current ?? generateId("chl"),
-      challanNumber: data.challanNumber,
-      date: data.date,
-      vendorName: data.vendorName,
-      vendorAddress: data.vendorAddress,
-      vendorPersonName: data.vendorPersonName,
-      vendorContact: data.vendorContact,
-      vendorGstNo: data.vendorGstNo?.trim().toUpperCase() ?? "",
-      vehicleNumber: data.vehicleNumber?.trim() ?? "",
-      driverName: data.driverName?.trim() ?? "",
-      items,
-    };
-
-    let challan: Challan;
-    if (type === "outward") {
-      const outwardData = data as OutwardForm;
-      const totalBundlesRaw = outwardData.totalBundles?.trim();
-      const totalBundles =
-        totalBundlesRaw && !Number.isNaN(Number(totalBundlesRaw))
-          ? Math.max(0, Math.trunc(Number(totalBundlesRaw)))
-          : undefined;
-      const totalWeightManualRaw = outwardData.totalWeightManual?.trim();
-      const totalWeightManual =
-        totalWeightManualRaw && !Number.isNaN(Number(totalWeightManualRaw))
-          ? Math.max(0, Math.round(Number(totalWeightManualRaw) * 100) / 100)
-          : undefined;
-      const totalNoOfProfiles = sumChallanItemQuantities(data.items);
-      const totalWeightAllProfiles =
-        Math.round(
-          data.items.reduce((sum, item) => {
-            const profile = findProfileInMap(profileByCode, item.profileCode);
-            const length = Number(item.length) || 0;
-            const qty = Number(item.qty) || 0;
-            if (profile && length > 0 && qty > 0) {
-              return sum + weightFromConversionUnit(profile, { length, qty });
-            }
-            return sum + Math.max(0, Number(item.weight) || 0);
-          }, 0) * 100
-        ) / 100;
-      const deliveryIssuer = findDeliveryChallanFromVendorById(
-        normalizedVendors,
-        outwardData.deliveryChallanFromVendorId
-      );
-      challan = {
-        ...base,
-        type: "outward",
-        deliveryChallanFromVendorId: outwardData.deliveryChallanFromVendorId,
-        deliveryChallanFromVendorName:
-          deliveryIssuer?.challanHeaderName?.trim() || deliveryIssuer?.partyName,
-        projectName: outwardData.projectName?.trim() || undefined,
-        totalBundles,
-        totalWeightManual,
-        totalWeightAllProfiles,
-        totalNoOfProfiles,
-      };
-    } else {
-      const coatingData = data as CoatingForm;
-      const issuer = findOutwardChallanIssuerById(
-        normalizedVendors,
-        coatingData.outwardChallanVendorId
-      );
-      challan = {
-        ...base,
-        type: "powder_coating",
-        outwardChallanVendorId: coatingData.outwardChallanVendorId,
-        outwardChallanVendorName: issuer?.partyName,
-        projectName: coatingData.projectName?.trim() || undefined,
-        color: coatingData.color.trim() as CoatingColor,
-        coatingRate: coatingManualRate,
-        sourceOutwardChallanId: coatingData.sourceOutwardChallanId?.trim() || undefined,
-        sourceOutwardChallanNumber: coatingData.sourceOutwardChallanNumber?.trim() || undefined,
-      };
-    }
-
     setOpen(false);
-    void onSave(challan);
+
+    queueMicrotask(() => {
+      const coatingManualRate =
+        isPowderCoating && Number((data as CoatingForm).coatingRate) > 0
+          ? Number((data as CoatingForm).coatingRate)
+          : undefined;
+      const items =
+        isPowderCoating
+          ? data.items.map((item) => {
+              const profile = findProfileInMap(profileByCode, item.profileCode);
+              return {
+                ...item,
+                rate: profile
+                  ? getPowderCoatingChallanRate(profile, undefined, coatingManualRate)
+                  : item.rate ?? 0,
+              };
+            })
+          : data.items.map(({ rate: _rate, ...item }) => {
+              const profile = findProfileInMap(profileByCode, item.profileCode);
+              const length = Number(item.length) || 0;
+              const qty = Number(item.qty) || 0;
+              return {
+                ...item,
+                weight:
+                  profile && length > 0 && qty > 0
+                    ? weightFromConversionUnit(profile, { length, qty })
+                    : Math.max(0, Number(item.weight) || 0),
+              };
+            });
+
+      const base = {
+        id: challanToEdit?.id ?? createChallanIdRef.current ?? generateId("chl"),
+        challanNumber: data.challanNumber,
+        date: data.date,
+        vendorName: data.vendorName,
+        vendorAddress: data.vendorAddress,
+        vendorPersonName: data.vendorPersonName,
+        vendorContact: data.vendorContact,
+        vendorGstNo: data.vendorGstNo?.trim().toUpperCase() ?? "",
+        vehicleNumber: data.vehicleNumber?.trim() ?? "",
+        driverName: data.driverName?.trim() ?? "",
+        items,
+      };
+
+      let challan: Challan;
+      if (type === "outward") {
+        const outwardData = data as OutwardForm;
+        const totalBundlesRaw = outwardData.totalBundles?.trim();
+        const totalBundles =
+          totalBundlesRaw && !Number.isNaN(Number(totalBundlesRaw))
+            ? Math.max(0, Math.trunc(Number(totalBundlesRaw)))
+            : undefined;
+        const totalWeightManualRaw = outwardData.totalWeightManual?.trim();
+        const totalWeightManual =
+          totalWeightManualRaw && !Number.isNaN(Number(totalWeightManualRaw))
+            ? Math.max(0, Math.round(Number(totalWeightManualRaw) * 100) / 100)
+            : undefined;
+        const totalNoOfProfiles = sumChallanItemQuantities(data.items);
+        const totalWeightAllProfiles =
+          Math.round(
+            data.items.reduce((sum, item) => {
+              const profile = findProfileInMap(profileByCode, item.profileCode);
+              const length = Number(item.length) || 0;
+              const qty = Number(item.qty) || 0;
+              if (profile && length > 0 && qty > 0) {
+                return sum + weightFromConversionUnit(profile, { length, qty });
+              }
+              return sum + Math.max(0, Number(item.weight) || 0);
+            }, 0) * 100
+          ) / 100;
+        const deliveryIssuer = findDeliveryChallanFromVendorById(
+          normalizedVendors,
+          outwardData.deliveryChallanFromVendorId
+        );
+        challan = {
+          ...base,
+          type: "outward",
+          deliveryChallanFromVendorId: outwardData.deliveryChallanFromVendorId,
+          deliveryChallanFromVendorName:
+            deliveryIssuer?.challanHeaderName?.trim() || deliveryIssuer?.partyName,
+          projectName: outwardData.projectName?.trim() || undefined,
+          totalBundles,
+          totalWeightManual,
+          totalWeightAllProfiles,
+          totalNoOfProfiles,
+        };
+      } else {
+        const coatingData = data as CoatingForm;
+        const issuer = findOutwardChallanIssuerById(
+          normalizedVendors,
+          coatingData.outwardChallanVendorId
+        );
+        challan = {
+          ...base,
+          type: "powder_coating",
+          outwardChallanVendorId: coatingData.outwardChallanVendorId,
+          outwardChallanVendorName: issuer?.partyName,
+          projectName: coatingData.projectName?.trim() || undefined,
+          color: coatingData.color.trim() as CoatingColor,
+          coatingRate: coatingManualRate,
+          sourceOutwardChallanId: coatingData.sourceOutwardChallanId?.trim() || undefined,
+          sourceOutwardChallanNumber: coatingData.sourceOutwardChallanNumber?.trim() || undefined,
+        };
+      }
+
+      void onSave(challan);
+    });
   };
 
   const title =
@@ -1209,7 +1212,7 @@ export function ChallanFormDialog({
                         readOnly
                         disabled
                         className="w-full min-w-0 bg-muted tabular-nums"
-                        value={coatingRate > 0 ? formatNumber(coatingRate, 4) : ""}
+                        value={coatingRate > 0 ? formatDecimalTrimmed(coatingRate) : ""}
                         aria-readonly
                       />
                     </div>

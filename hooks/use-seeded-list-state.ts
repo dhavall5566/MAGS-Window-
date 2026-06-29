@@ -2,10 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { fetchJson, getCachedJson } from "@/lib/fetch-json";
-import { mergeChallans } from "@/lib/challan-consumption";
-import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
+import { isBootstrapComplete, onBootstrapComplete } from "@/lib/bootstrap-state";
 import { useAppStore } from "@/lib/store";
-import type { Challan } from "@/types";
 
 type StoreState = ReturnType<typeof useAppStore.getState>;
 
@@ -42,12 +40,18 @@ export function readCachedOrStoreList<T, K extends string>(
   mapItem?: (item: T) => T
 ): T[] {
   const cached = readCachedApiList(url, listKey, mapItem);
-  if (cached.length > 0) return cached;
+  if (cached.length > 0 || isBootstrapComplete()) return cached;
+
   const storeItems = storeSelector(useAppStore.getState()) ?? [];
   return mapItem ? storeItems.map(mapItem) : storeItems;
 }
 
-/** SSR-safe list state seeded from session cache or persisted store before paint. */
+function hasCachedList<T, K extends string>(url: string, listKey: K): boolean {
+  const cached = getCachedJson<Record<K, T[] | undefined>>(url);
+  return cached != null && listKey in cached;
+}
+
+/** SSR-safe list state seeded from cache or store. Skips refetch when bootstrap warmed the cache. */
 export function useCachedOrStoreList<T, K extends string>(
   url: string,
   listKey: K,
@@ -59,20 +63,39 @@ export function useCachedOrStoreList<T, K extends string>(
   const mapItemRef = useRef(mapItem);
   mapItemRef.current = mapItem;
 
-  const [items, setItems] = useState<T[]>([]);
+  const readList = () =>
+    readCachedOrStoreList(
+      url,
+      listKey,
+      storeSelectorRef.current,
+      mapItemRef.current
+    );
+
+  const [items, setItems] = useState<T[]>(() =>
+    typeof window === "undefined" ? [] : readList()
+  );
 
   useLayoutEffect(() => {
-    setItems(
-      readCachedOrStoreList(
-        url,
-        listKey,
-        storeSelectorRef.current,
-        mapItemRef.current
-      )
-    );
+    const next = readList();
+    setItems((prev) => (areListsEqual(prev, next) ? prev : next));
   }, [url, listKey]);
 
   useEffect(() => {
+    const syncFromCacheOrStore = () => {
+      const next = readList();
+      setItems((prev) => (areListsEqual(prev, next) ? prev : next));
+    };
+
+    const unsubscribeBootstrap = onBootstrapComplete(syncFromCacheOrStore);
+    if (isBootstrapComplete()) {
+      syncFromCacheOrStore();
+    }
+
+    if (hasCachedList<T, K>(url, listKey) || isBootstrapComplete()) {
+      syncFromCacheOrStore();
+      return unsubscribeBootstrap;
+    }
+
     let cancelled = false;
 
     void fetchJson<Record<K, T[] | undefined>>(url).then((data) => {
@@ -81,22 +104,12 @@ export function useCachedOrStoreList<T, K extends string>(
       const remote = (data?.[listKey] ?? []).map((item) =>
         mapper ? mapper(item) : item
       );
-      const local = storeSelectorRef.current(useAppStore.getState()) ?? [];
-      let next: T[] = remote;
-      if (url === "/api/challans" && listKey === "challans") {
-        next = mergeChallans(remote as Challan[], local as Challan[]) as T[];
-        useAppStore.setState({ challans: next as Challan[] });
-      } else if (local.length > 0) {
-        next = mergeListsByIdPreferLocal(
-          remote as Array<T & { id: string }>,
-          local as Array<T & { id: string }>
-        );
-      }
-      setItems((prev) => (areListsEqual(prev, next) ? prev : next));
+      setItems((prev) => (areListsEqual(prev, remote) ? prev : remote));
     });
 
     return () => {
       cancelled = true;
+      unsubscribeBootstrap();
     };
   }, [url, listKey]);
 

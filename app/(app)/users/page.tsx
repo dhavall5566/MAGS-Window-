@@ -1,9 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
-import { AddUserDialog } from "@/components/users/add-user-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppStore } from "@/lib/store";
@@ -11,6 +11,11 @@ import { useModuleCrud } from "@/hooks/use-module-crud";
 import { createUserApi } from "@/lib/user-api";
 import { alertSyncFailure } from "@/lib/sync-alert";
 import type { User } from "@/types";
+
+const AddUserDialog = dynamic(
+  () => import("@/components/users/add-user-dialog").then((m) => m.AddUserDialog),
+  { ssr: false }
+);
 
 const ROLE_LABELS: Record<string, string> = {
   administrator: "Administrator",

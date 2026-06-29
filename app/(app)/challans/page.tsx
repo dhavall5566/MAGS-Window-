@@ -5,6 +5,10 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import {
+  combineTableFilters,
+  useDateRangeFilter,
+} from "@/components/shared/date-range-filter";
 import { ProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
@@ -17,11 +21,10 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate, formatNumber } from "@/lib/utils";
-import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
 import { appendChallanIfMissing } from "@/lib/challan-consumption";
 import { createChallanApi, deleteChallanApi, updateChallanApi } from "@/lib/challan-api";
+import { syncChallansFromStore, syncChallansList } from "@/lib/list-cache-sync";
 import { alertSyncFailure } from "@/lib/sync-alert";
-import { setJsonCacheEntry } from "@/lib/fetch-json";
 import {
   calculatePowderCoatingItemAmount,
   findProfileByCode,
@@ -32,17 +35,12 @@ import {
   getUniqueCodesForSeriesFromProfileCodes,
   getUniqueSeriesFromProfileCodes,
   matchesItemsProfileCodeFilters,
-  mergeProfiles,
 } from "@/lib/profile";
 import { getOutwardChallanProjectName, sumChallanItemQuantities, sumChallanItemWeights } from "@/lib/challan-outward";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 import type { Challan, ChallanItem, PowderCoatingChallan, Profile } from "@/types";
-
-const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.challans ?? [];
-const selectStoreProfiles = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.profiles ?? [];
 
 const ChallanFormDialog = dynamic(
   () =>
@@ -256,108 +254,85 @@ function ChallanDetail({
 }
 
 export default function ChallansPage() {
-  const storeProfiles = useAppStore((s) => s.profiles);
-  const vendors = useAppStore((s) => s.vendors);
   const replaceChallan = useAppStore((s) => s.replaceChallan);
   const deleteChallan = useAppStore((s) => s.deleteChallan);
-  const [apiChallans, setApiChallans] = useCachedOrStoreList(
-    "/api/challans",
-    "challans",
-    selectStoreChallans
-  );
-  const [apiProfiles, setApiProfiles] = useCachedOrStoreList(
-    "/api/profiles",
-    "profiles",
-    selectStoreProfiles
+  const { challans, profiles, vendors } = useAppStore(
+    useShallow((s) => ({
+      challans: s.challans ?? [],
+      profiles: s.profiles ?? [],
+      vendors: s.vendors ?? [],
+    }))
   );
   const [activeTab, setActiveTab] = useState("all");
   const [seriesFilter, setSeriesFilter] = useState("");
   const [codeFilter, setCodeFilter] = useState("");
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter();
   const [editingChallan, setEditingChallan] = useState<Challan | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [viewChallan, setViewChallan] = useState<Challan | null>(null);
   const [, startTabTransition] = useTransition();
 
-  const profiles = mergeProfiles(apiProfiles, storeProfiles ?? []);
-
-  const challans = apiChallans;
-
-  const handleCreate = (challan: Challan) => {
+  const handleCreate = useCallback((challan: Challan) => {
+    const currentChallans = useAppStore.getState().challans ?? [];
     replaceChallan(challan);
-    const nextChallans = appendChallanIfMissing(apiChallans, challan);
-    setApiChallans(nextChallans);
-    setJsonCacheEntry("/api/challans", { challans: nextChallans });
-    useAppStore.setState({ challans: nextChallans });
+    syncChallansList(appendChallanIfMissing(currentChallans, challan));
 
     void createChallanApi(challan).then((saved) => {
       if (!saved) {
-        const reverted = apiChallans.filter((row) => row.id !== challan.id);
         useAppStore.setState((state) => ({
           challans: (state.challans ?? []).filter((row) => row.id !== challan.id),
         }));
-        setApiChallans(reverted);
-        setJsonCacheEntry("/api/challans", { challans: reverted });
+        syncChallansFromStore();
         alertSyncFailure("Could not save challan to the server.");
         return;
       }
-      const merged = appendChallanIfMissing(apiChallans, saved);
-      useAppStore.setState({ challans: merged });
-      setApiChallans(merged);
-      setJsonCacheEntry("/api/challans", { challans: merged });
+      replaceChallan(saved);
+      syncChallansFromStore();
     });
-  };
+  }, [replaceChallan]);
 
-  const handleUpdate = (challan: Challan) => {
-    const previous = apiChallans.find((row) => row.id === challan.id) ?? null;
+  const handleUpdate = useCallback((challan: Challan) => {
+    const currentChallans = useAppStore.getState().challans ?? [];
+    const previous = currentChallans.find((row) => row.id === challan.id) ?? null;
     replaceChallan(challan);
-    const nextChallans = appendChallanIfMissing(apiChallans, challan);
-    setApiChallans(nextChallans);
-    setJsonCacheEntry("/api/challans", { challans: nextChallans });
-    useAppStore.setState({ challans: nextChallans });
-    setEditOpen(false);
-    setEditingChallan(null);
+    syncChallansList(appendChallanIfMissing(currentChallans, challan));
 
     void updateChallanApi(challan).then((saved) => {
       if (!saved) {
         const reverted = previous
-          ? apiChallans.map((row) => (row.id === previous.id ? previous : row))
-          : apiChallans.filter((row) => row.id !== challan.id);
-        useAppStore.setState({ challans: reverted });
-        setApiChallans(reverted);
-        setJsonCacheEntry("/api/challans", { challans: reverted });
+          ? currentChallans.map((row) => (row.id === previous.id ? previous : row))
+          : currentChallans.filter((row) => row.id !== challan.id);
+        syncChallansList(reverted);
         alertSyncFailure("Could not update challan on the server.");
         return;
       }
-      const merged = appendChallanIfMissing(
-        apiChallans.filter((row) => row.id !== saved.id),
-        saved
-      );
-      useAppStore.setState({ challans: merged });
-      setApiChallans(merged);
-      setJsonCacheEntry("/api/challans", { challans: merged });
+      replaceChallan(saved);
+      syncChallansFromStore();
     });
-  };
+  }, [replaceChallan]);
 
   const handleDelete = useCallback(async (challan: Challan) => {
     if (!confirm(`Delete challan ${challan.challanNumber}? Consumption will be updated.`)) {
       return;
     }
     const previous = challan;
+    const currentChallans = useAppStore.getState().challans ?? [];
     deleteChallan(challan.id);
-    const nextChallans = apiChallans.filter((row) => row.id !== challan.id);
-    setApiChallans(nextChallans);
-    setJsonCacheEntry("/api/challans", { challans: nextChallans });
-    useAppStore.setState({ challans: nextChallans });
+    const nextChallans = currentChallans.filter((row) => row.id !== challan.id);
+    syncChallansList(nextChallans);
     const ok = await deleteChallanApi(challan.id);
     if (!ok) {
       const restored = appendChallanIfMissing(nextChallans, previous);
       replaceChallan(previous);
-      setApiChallans(restored);
-      setJsonCacheEntry("/api/challans", { challans: restored });
-      useAppStore.setState({ challans: restored });
+      syncChallansFromStore();
       alertSyncFailure("Could not delete challan from the server.");
     }
-  }, [apiChallans, deleteChallan, replaceChallan, setApiChallans]);
+  }, [deleteChallan, replaceChallan]);
 
   const handleEdit = useCallback((challan: Challan) => {
     setEditingChallan(challan);
@@ -397,10 +372,12 @@ export default function ChallansPage() {
 
   const filtered = useMemo(
     () =>
-      tabFiltered.filter((challan) =>
-        matchesItemsProfileCodeFilters(challan.items, seriesFilter, codeFilter)
+      tabFiltered.filter(
+        (challan) =>
+          matchesItemsProfileCodeFilters(challan.items, seriesFilter, codeFilter) &&
+          matchesDate(challan.date)
       ),
-    [tabFiltered, seriesFilter, codeFilter]
+    [tabFiltered, seriesFilter, codeFilter, matchesDate]
   );
 
   const handleChallanSearch = useCallback((row: Challan, query: string) => {
@@ -415,7 +392,7 @@ export default function ChallansPage() {
     );
   }, []);
 
-  const tableFilters = (
+  const tableFilters = combineTableFilters(
     <ProfileCodeFilters
       seriesFilter={seriesFilter}
       codeFilter={codeFilter}
@@ -423,13 +400,15 @@ export default function ChallansPage() {
       codeOptions={codeFilterOptions}
       onSeriesChange={setSeriesFilter}
       onCodeChange={setCodeFilter}
-    />
+    />,
+    dateFilterContent
   );
 
   const handleClearFilters = useCallback(() => {
     setSeriesFilter("");
     setCodeFilter("");
-  }, []);
+    clearDateFilters();
+  }, [clearDateFilters]);
 
   const formatProfileCodes = (items: Challan["items"]) => {
     const codes = getItemProfileCodes(items);
@@ -622,6 +601,7 @@ export default function ChallansPage() {
             setActiveTab(value);
             setSeriesFilter("");
             setCodeFilter("");
+            clearDateFilters();
           });
         }}
         className="mb-3"
@@ -647,7 +627,7 @@ export default function ChallansPage() {
             searchFilter={handleChallanSearch}
             searchPlaceholder="Search challan, vendor, or profile code..."
             filterContent={tableFilters}
-            filtersActive={Boolean(seriesFilter || codeFilter)}
+            filtersActive={Boolean(seriesFilter || codeFilter || dateFiltersActive)}
             onClearFilters={handleClearFilters}
           />
         </div>

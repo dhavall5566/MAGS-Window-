@@ -1,70 +1,24 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
-import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
-import { buildStockMasterRows, mergeStockInward } from "@/lib/stock-master";
-import {
-  formatStockLength,
-  normalizeStockInwardRecord,
-} from "@/lib/stock-inward-calculations";
+import { formatStockLength } from "@/lib/stock-inward-calculations";
 import { formatNumber } from "@/lib/utils";
-import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
-import { enrichChallanVendorDetails } from "@/lib/vendor";
+import { useStockMasterRows } from "@/hooks/use-stock-derived-data";
 import { useAppStore } from "@/lib/store";
-import type { Challan, StockInward } from "@/types";
-
-const selectStoreInward = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.stockInward ?? [];
-const selectStoreChallans = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.challans ?? [];
 
 export default function StockMasterPage() {
-  const storeInward = useAppStore((s) => s.stockInward);
-  const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
-  const storeChallans = useAppStore((s) => s.challans);
-  const vendors = useAppStore((s) => s.vendors);
-  const highlightLowStock = useAppStore((s) => s.settings.highlightLowStock);
-  const lowStockThresholdKg = useAppStore((s) => s.settings.lowStockThresholdKg);
-  const [apiInward, setApiInward] = useCachedOrStoreList(
-    "/api/stock",
-    "inward",
-    selectStoreInward,
-    normalizeStockInwardRecord
+  const { highlightLowStock, lowStockThresholdKg } = useAppStore(
+    useShallow((s) => ({
+      highlightLowStock: s.settings.highlightLowStock,
+      lowStockThresholdKg: s.settings.lowStockThresholdKg,
+    }))
   );
-  const [apiChallans, setApiChallans] = useCachedOrStoreList(
-    "/api/challans",
-    "challans",
-    selectStoreChallans
-  );
-
-  const inward = useMemo(
-    () =>
-      mergeStockInward(
-        apiInward,
-        (storeInward ?? []).map(normalizeStockInwardRecord),
-        deletedStockInwardIds ?? []
-      ),
-    [apiInward, storeInward, deletedStockInwardIds]
-  );
-
-  const consumption = useMemo(() => {
-    const enrichedStore = (storeChallans ?? []).map((challan) =>
-      enrichChallanVendorDetails(challan, vendors ?? [])
-    );
-    const enrichedApi = apiChallans.map((challan) =>
-      enrichChallanVendorDetails(challan, vendors ?? [])
-    );
-    return buildOutwardConsumptionFromChallans(enrichedApi, enrichedStore);
-  }, [apiChallans, storeChallans, vendors]);
-
-  const rows = useMemo(
-    () => buildStockMasterRows(inward, consumption),
-    [inward, consumption]
-  );
+  const rows = useStockMasterRows();
 
   const profileCodes = useMemo(
     () => rows.map((row) => row.profileCode).filter(Boolean),
@@ -124,6 +78,16 @@ export default function StockMasterPage() {
             )}
           </div>
         ),
+      },
+      {
+        key: "totalWeightManualKg",
+        header: "Total Weight Manual (Kg)",
+        className: "whitespace-nowrap tabular-nums",
+        align: "center" as const,
+        render: (row: (typeof rows)[number]) =>
+          row.totalWeightManualKg != null
+            ? formatNumber(row.totalWeightManualKg, 2)
+            : "—",
       },
       {
         key: "length",

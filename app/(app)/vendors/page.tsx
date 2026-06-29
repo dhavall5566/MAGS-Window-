@@ -1,10 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
-import { AddVendorDialog } from "@/components/vendors/add-vendor-dialog";
-import { EditVendorDialog } from "@/components/vendors/edit-vendor-dialog";
 import { VendorRowActions } from "@/components/vendors/vendor-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { SegmentedControl } from "@/components/shared/segmented-control";
@@ -15,11 +14,22 @@ import {
   deleteVendorApi,
   updateVendorApi,
 } from "@/lib/vendor-api";
+import { syncListCache } from "@/lib/list-cache-sync";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { formatPartyAddress, getVendorTypeLabel } from "@/lib/vendor";
-import { isMockVendorId } from "@/lib/vendor-merge";
 import type { Vendor, VendorType } from "@/types";
+
+const AddVendorDialog = dynamic(
+  () => import("@/components/vendors/add-vendor-dialog").then((m) => m.AddVendorDialog),
+  { ssr: false }
+);
+
+const EditVendorDialog = dynamic(
+  () => import("@/components/vendors/edit-vendor-dialog").then((m) => m.EditVendorDialog),
+  { ssr: false }
+);
 
 type VendorTypeFilter = VendorType | "all";
 
@@ -43,13 +53,19 @@ export default function VendorsPage() {
   const handleAddVendor = useCallback(
     async (vendor: Vendor) => {
       addVendor(vendor);
+      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
       const saved = await createVendorApi(vendor);
-      if (saved) {
-        upsertVendor(saved);
+      if (!saved) {
+        deleteVendor(vendor.id);
+        syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
+        alertSyncFailure("Could not save vendor to the server.");
+        return;
       }
+      upsertVendor(saved);
+      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
       showAddedToast("Vendor");
     },
-    [addVendor, upsertVendor]
+    [addVendor, deleteVendor, upsertVendor]
   );
 
   const handleUpdateVendor = useCallback(
@@ -60,11 +76,20 @@ export default function VendorsPage() {
         "partyName" | "partyAddress" | "personName" | "phoneNo" | "email" | "vendorType" | "gstNo"
       >
     ) => {
+      const current = (useAppStore.getState().vendors ?? []).find((vendor) => vendor.id === id);
+      if (!current) return;
+
       updateVendor(id, updates);
+      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
       const saved = await updateVendorApi(id, updates);
-      if (saved) {
-        upsertVendor(saved);
+      if (!saved) {
+        upsertVendor(current);
+        syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
+        alertSyncFailure("Could not update vendor on the server.");
+        return;
       }
+      upsertVendor(saved);
+      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
       showSavedToast("Vendor");
     },
     [updateVendor, upsertVendor]
@@ -77,16 +102,14 @@ export default function VendorsPage() {
 
   const handleDelete = useCallback(
     async (vendor: Vendor) => {
-      if (isMockVendorId(vendor.id)) {
-        alert("Seeded vendors cannot be deleted.");
-        return;
-      }
       if (!confirm(`Delete vendor ${vendor.partyName}?`)) return;
 
       deleteVendor(vendor.id);
+      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
       const ok = await deleteVendorApi(vendor.id);
       if (!ok) {
         upsertVendor(vendor);
+        syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
         alert("Could not delete vendor from the server. It was restored locally.");
         return;
       }

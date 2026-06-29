@@ -1,12 +1,15 @@
 /** Safe client fetch — never throws on 503/non-OK; returns empty object on failure */
 
 const CACHE_STORAGE_PREFIX = "mags-fetch-cache:";
+const MAX_SESSION_CACHE_BYTES = 512_000;
 
 const cache = new Map<string, unknown>();
 const inflight = new Map<string, Promise<unknown>>();
+let storageHydrated = false;
 
 function readStoredCache(): void {
-  if (typeof window === "undefined") return;
+  if (storageHydrated || typeof window === "undefined") return;
+  storageHydrated = true;
   try {
     for (let index = 0; index < sessionStorage.length; index += 1) {
       const storageKey = sessionStorage.key(index);
@@ -24,22 +27,24 @@ function readStoredCache(): void {
 function persistCacheEntry(url: string, value: unknown): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(`${CACHE_STORAGE_PREFIX}${url}`, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    if (serialized.length > MAX_SESSION_CACHE_BYTES) return;
+    sessionStorage.setItem(`${CACHE_STORAGE_PREFIX}${url}`, serialized);
   } catch {
     // Ignore quota errors.
   }
 }
 
-readStoredCache();
-
 export function getCachedJson<T extends object = Record<string, unknown>>(
   url: string
 ): T | undefined {
+  readStoredCache();
   const hit = cache.get(url);
   return hit ? (hit as T) : undefined;
 }
 
 export function setJsonCacheEntry(url: string, value: object): void {
+  readStoredCache();
   cache.set(url, value);
   persistCacheEntry(url, value);
 }
@@ -49,6 +54,7 @@ export function prefetchJson(url: string): void {
 }
 
 export function invalidateJsonCache(url: string): void {
+  readStoredCache();
   cache.delete(url);
   inflight.delete(url);
   if (typeof window !== "undefined") {
@@ -65,6 +71,8 @@ export async function fetchJson<T extends object = Record<string, unknown>>(
   fallback: T = {} as T,
   options?: { force?: boolean }
 ): Promise<T> {
+  readStoredCache();
+
   if (!options?.force && cache.has(url)) {
     return cache.get(url) as T;
   }
@@ -78,12 +86,7 @@ export async function fetchJson<T extends object = Record<string, unknown>>(
     try {
       const res = await fetch(url);
       if (!res.ok) {
-        const fb = fallback;
-        if (Object.keys(fb).length > 0) {
-          cache.set(url, fb);
-          persistCacheEntry(url, fb);
-        }
-        return fb;
+        return fallback;
       }
       const data = await res.json();
       const result = (data ?? fallback) as T;
@@ -91,11 +94,6 @@ export async function fetchJson<T extends object = Record<string, unknown>>(
       persistCacheEntry(url, result);
       return result;
     } catch {
-      const fb = fallback;
-      if (Object.keys(fb).length > 0) {
-        cache.set(url, fb);
-        persistCacheEntry(url, fb);
-      }
       return fallback;
     } finally {
       inflight.delete(url);

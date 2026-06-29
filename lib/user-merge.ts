@@ -1,9 +1,9 @@
-import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
+import { mergeListsByIdPreferRemote } from "@/lib/merge-lists";
 import { mockUsers } from "@/lib/mock-data/users";
 import type { User } from "@/types";
 
 export function mergeUsersLists(remote: User[], local: User[]): User[] {
-  const merged = mergeListsByIdPreferLocal(remote, local);
+  const merged = mergeListsByIdPreferRemote(remote, local);
   const ids = new Set(merged.map((user) => user.id));
   for (const mock of mockUsers) {
     if (!ids.has(mock.id)) merged.push(mock);

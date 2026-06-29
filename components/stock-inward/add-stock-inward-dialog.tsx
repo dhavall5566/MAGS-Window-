@@ -67,9 +67,14 @@ export function AddStockInwardDialog({
     );
     if (entries.length === 0) return;
 
-    await onSave(entries);
     resetForm();
     setOpen(false);
+
+    try {
+      await onSave(entries);
+    } catch {
+      // handleAddStock reverts optimistic rows and shows an alert on failure.
+    }
   };
 
   return (

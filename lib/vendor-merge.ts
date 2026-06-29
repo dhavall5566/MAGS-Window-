@@ -1,4 +1,4 @@
-import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
+import { mergeListsByIdPreferRemote } from "@/lib/merge-lists";
 import { mockVendors } from "@/lib/mock-data/vendors";
 import { normalizeVendor } from "@/lib/vendor";
 import type { Vendor } from "@/types";
@@ -46,14 +46,24 @@ export function isMockVendorId(id: string): boolean {
   return getMockVendorIds().has(id);
 }
 
-/** Keep seeded mock vendors, merge API + local user-created vendors. */
+/** Keep seeded mock vendors as offline fallback; merge API + local user-created vendors. */
 export function mergeVendorLists(remote: Vendor[], local: Vendor[]): Vendor[] {
-  const userRemote = remote
+  const normalizedRemote = remote
     .map(normalizeVendor)
-    .filter((vendor) => !getMockVendorIds().has(vendor.id) && !isRetiredVendor(vendor));
-  const userLocal = local
+    .filter((vendor) => !isRetiredVendor(vendor));
+  const normalizedLocal = local
     .map(normalizeVendor)
-    .filter((vendor) => !getMockVendorIds().has(vendor.id) && !isRetiredVendor(vendor));
-  const userVendors = mergeListsByIdPreferLocal(userRemote, userLocal);
-  return prepareVendorList([...mockVendors.map(normalizeVendor), ...userVendors]);
+    .filter((vendor) => !isRetiredVendor(vendor));
+
+  if (normalizedRemote.length > 0) {
+    return prepareVendorList(
+      mergeListsByIdPreferRemote(normalizedRemote, normalizedLocal)
+    );
+  }
+
+  const userLocal = normalizedLocal.filter((vendor) => !getMockVendorIds().has(vendor.id));
+  const seeded = mockVendors
+    .map(normalizeVendor)
+    .filter((vendor) => !isRetiredVendor(vendor));
+  return prepareVendorList([...seeded, ...userLocal]);
 }

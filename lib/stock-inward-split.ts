@@ -91,11 +91,17 @@ export function splitStockInward(
 
   const parentQty = normalizedParent.quantity ?? 0;
   const kgPerMeter = normalizedParent.kgPerMeter ?? 0;
+  const parentWeight = normalizedParent.totalWeightKg ?? normalizedParent.weight ?? 0;
+  const parentManual = normalizedParent.totalWeightManualKg;
   const inwardNos = generateInwardNos(existingInward, pieces.length);
 
   const children: StockInward[] = pieces.map((piece, index) => {
     const length = normalizeStockLength(piece.lengthInMeter);
     const totalWeightKg = calculateTotalWeightKg(parentQty, length, kgPerMeter);
+    const totalWeightManualKg =
+      parentManual != null && parentWeight > 0
+        ? Math.round((parentManual * totalWeightKg) / parentWeight * 100) / 100
+        : undefined;
 
     return normalizeStockInwardRecord({
       id: createId(),
@@ -108,6 +114,7 @@ export function splitStockInward(
       profileName: normalizedParent.profileName,
       profileImage: normalizedParent.profileImage,
       totalWeightKg,
+      totalWeightManualKg,
       length,
       kgPerMeter,
       quantity: parentQty,
@@ -125,6 +132,7 @@ export function splitStockInward(
     status: "split",
     splitAt,
     totalWeightKg: 0,
+    totalWeightManualKg: undefined,
     weight: 0,
     quantity: 0,
   });

@@ -1,16 +1,17 @@
 import { prefetchJson } from "@/lib/fetch-json";
 
+/** API paths loaded during bootstrap — prefetch early so cache is warm before first navigation. */
 export const APP_API_PATHS = [
   "/api/series",
   "/api/profiles",
-  "/api/challans",
-  "/api/purchase-orders",
-  "/api/vendors",
   "/api/stock",
-  "/api/consumption",
+  "/api/purchase-orders",
+  "/api/challans",
   "/api/powder-coating",
-  "/api/reports",
+  "/api/vendors",
   "/api/users",
+  "/api/app-settings",
+  "/api/reports",
 ] as const;
 
 export function prefetchAppData(): void {

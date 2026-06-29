@@ -1,19 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import Image from "next/image";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { useProfileFilters } from "@/components/shared/use-profile-filters";
-import { AddProfileDialog } from "@/components/profiles/add-profile-dialog";
-import { EditProfileDialog } from "@/components/profiles/edit-profile-dialog";
-import { ProfileImagePreviewDialog } from "@/components/profiles/profile-image-preview-dialog";
-import { ProfilePriceHistoryDialog } from "@/components/profiles/profile-price-history-dialog";
 import { ProfileRowActions } from "@/components/profiles/profile-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { useCachedApiList } from "@/hooks/use-cached-api-list";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { syncListCache } from "@/lib/list-cache-sync";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import {
   createProfileApi,
   deleteProfileApi,
@@ -33,6 +31,32 @@ import { PROFILE_FIELD_LABELS } from "@/lib/profile-form";
 import { useAppStore } from "@/lib/store";
 import { formatNumber } from "@/lib/utils";
 import type { Profile } from "@/types";
+
+const AddProfileDialog = dynamic(
+  () => import("@/components/profiles/add-profile-dialog").then((m) => m.AddProfileDialog),
+  { ssr: false }
+);
+
+const EditProfileDialog = dynamic(
+  () => import("@/components/profiles/edit-profile-dialog").then((m) => m.EditProfileDialog),
+  { ssr: false }
+);
+
+const ProfileImagePreviewDialog = dynamic(
+  () =>
+    import("@/components/profiles/profile-image-preview-dialog").then(
+      (m) => m.ProfileImagePreviewDialog
+    ),
+  { ssr: false }
+);
+
+const ProfilePriceHistoryDialog = dynamic(
+  () =>
+    import("@/components/profiles/profile-price-history-dialog").then(
+      (m) => m.ProfilePriceHistoryDialog
+    ),
+  { ssr: false }
+);
 
 function mergeProfileLists(apiProfiles: Profile[], storeProfiles: Profile[]): Profile[] {
   const merged = apiProfiles.map(normalizeProfile);
@@ -84,12 +108,16 @@ export default function ProfilesPage() {
       addProfile(profile);
       syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
       const saved = await createProfileApi(profile);
-      if (saved) {
-        updateProfile(saved.id, saved);
+      if (!saved) {
+        deleteProfile(profile.id);
         syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+        alertSyncFailure("Could not save profile to the server.");
+        return;
       }
+      updateProfile(saved.id, saved);
+      syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
     },
-    [addProfile, updateProfile]
+    [addProfile, deleteProfile, updateProfile]
   );
 
   const handleUpdateProfile = useCallback(
@@ -103,10 +131,14 @@ export default function ProfilesPage() {
       updateProfile(id, updates);
       syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
       const saved = await upsertProfileApi(nextProfile);
-      if (saved) {
-        updateProfile(saved.id, saved);
+      if (!saved) {
+        updateProfile(id, current);
         syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
+        alertSyncFailure("Could not update profile on the server.");
+        return;
       }
+      updateProfile(saved.id, saved);
+      syncListCache("/api/profiles", "profiles", useAppStore.getState().profiles ?? []);
     },
     [profiles, updateProfile]
   );

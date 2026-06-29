@@ -19,6 +19,7 @@ export function normalizeStockInwardSupplier(supplier: string | undefined | null
 export const stockInwardLengthRowSchema = z.object({
   lengthInMeter: z.coerce.number().min(0.01, "Length is required"),
   totalWeightKg: z.coerce.number().min(0.01, "Total weight is required"),
+  totalWeightManualKg: z.coerce.number().min(0).optional(),
   totalProfiles: z.coerce.number().min(0.01, "NOS is required"),
   kgPerMeter: z.coerce.number().min(0).optional().default(0),
 });
@@ -36,7 +37,12 @@ export const stockInwardProfileRowSchema = z.object({
 export type StockInwardProfileRow = z.infer<typeof stockInwardProfileRowSchema>;
 
 export function createEmptyStockInwardLengthRow(kgPerMeter = 0): StockInwardLengthRow {
-  return { lengthInMeter: 0, totalWeightKg: 0, totalProfiles: 0, kgPerMeter };
+  return { lengthInMeter: 0, totalWeightKg: 0, totalWeightManualKg: undefined, totalProfiles: 0, kgPerMeter };
+}
+
+function resolveManualWeightKg(value: number | undefined): number | undefined {
+  if (value == null || Number.isNaN(value) || value <= 0) return undefined;
+  return Math.round(value * 100) / 100;
 }
 
 export function createEmptyStockInwardProfileRow(): StockInwardProfileRow {
@@ -139,6 +145,7 @@ export function stockInwardEntryToAddFormData(
           {
             lengthInMeter: entry.length ?? 0,
             totalWeightKg: entry.totalWeightKg ?? entry.weight ?? 0,
+            totalWeightManualKg: entry.totalWeightManualKg,
             totalProfiles: entry.quantity ?? 0,
             kgPerMeter,
           },
@@ -172,6 +179,9 @@ export function buildStockInwardEntry(
       data.profileImage?.trim() ||
       getStockInwardProfileImage({ profileImage: data.profileImage, profileCode: profile.code }, profile),
     totalWeightKg: data.totalWeightKg,
+    totalWeightManualKg: resolveManualWeightKg(
+      (data as StockInwardFormData & { totalWeightManualKg?: number }).totalWeightManualKg
+    ),
     length: data.lengthInMeter,
     kgPerMeter,
     quantity: metrics.totalProfiles,
@@ -232,6 +242,7 @@ export function buildStockInwardEntriesFromAddForm(
         profileName: profile.name,
         profileImage,
         totalWeightKg: row.totalWeightKg,
+        totalWeightManualKg: resolveManualWeightKg(row.totalWeightManualKg),
         length,
         kgPerMeter: row.kgPerMeter || kgPerMeter,
         quantity: metrics.totalProfiles,
@@ -280,6 +291,7 @@ export function buildStockInwardEntriesFromEditForm(
         profileName: profile.name,
         profileImage,
         totalWeightKg: row.totalWeightKg,
+        totalWeightManualKg: resolveManualWeightKg(row.totalWeightManualKg),
         length,
         kgPerMeter: row.kgPerMeter || kgPerMeter,
         quantity: metrics.totalProfiles,

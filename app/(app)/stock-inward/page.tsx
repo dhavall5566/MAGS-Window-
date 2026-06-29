@@ -5,10 +5,13 @@ import Image from "next/image";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
+import {
+  combineTableFilters,
+  useDateRangeFilter,
+} from "@/components/shared/date-range-filter";
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { StockInwardRowActions } from "@/components/stock-inward/stock-inward-row-actions";
 import { Badge } from "@/components/ui/badge";
-import { mergeProfiles } from "@/lib/profile";
 import {
   formatStockLength,
   getStockInwardProfileImage,
@@ -17,19 +20,19 @@ import {
 import {
   createStockInwardApi,
   deleteStockInwardApi,
-  fetchStockInwardEntries,
   saveStockInwardEntriesApi,
   splitStockInwardApi,
   updateStockInwardApi,
 } from "@/lib/stock-inward-api";
-import { mergeStockInward } from "@/lib/stock-master";
+import { syncStockInwardFromStore } from "@/lib/list-cache-sync";
 import { formatDate, formatNumber } from "@/lib/utils";
-import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
+import { useActiveStockInward } from "@/hooks/use-stock-derived-data";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
 import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
-import type { Profile, StockInward } from "@/types";
+import { useShallow } from "zustand/react/shallow";
+import type { StockInward } from "@/types";
 
 const AddStockInwardDialog = dynamic(
   () =>
@@ -55,51 +58,28 @@ const SplitStockInwardDialog = dynamic(
   { ssr: false }
 );
 
-const selectStoreInward = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.stockInward ?? [];
-const selectStoreProfiles = (state: ReturnType<typeof useAppStore.getState>) =>
-  state.profiles ?? [];
-
 export default function StockInwardPage() {
   const { canCreate, canUpdate, canDelete } = useModuleCrud("stock");
-  const storeInward = useAppStore((s) => s.stockInward);
-  const deletedStockInwardIds = useAppStore((s) => s.deletedStockInwardIds);
   const addStockInward = useAppStore((s) => s.addStockInward);
   const upsertStockInward = useAppStore((s) => s.upsertStockInward);
   const revertStockInwardAdds = useAppStore((s) => s.revertStockInwardAdds);
   const deleteStockInward = useAppStore((s) => s.deleteStockInward);
-  const storeProfiles = useAppStore((s) => s.profiles);
-  const vendors = useAppStore((s) => s.vendors);
-  const [apiInward, setApiInward] = useCachedOrStoreList(
-    "/api/stock",
-    "inward",
-    selectStoreInward,
-    normalizeStockInwardRecord
+  const { storeProfiles, vendors } = useAppStore(
+    useShallow((s) => ({
+      storeProfiles: s.profiles ?? [],
+      vendors: s.vendors ?? [],
+    }))
   );
-  const [apiProfiles, setApiProfiles] = useCachedOrStoreList(
-    "/api/profiles",
-    "profiles",
-    selectStoreProfiles
-  );
+  const inward = useActiveStockInward();
   const [editingEntry, setEditingEntry] = useState<StockInward | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [splittingEntry, setSplittingEntry] = useState<StockInward | null>(null);
   const [splitOpen, setSplitOpen] = useState(false);
-  const profiles = mergeProfiles(apiProfiles, storeProfiles ?? []);
+  const profiles = storeProfiles;
 
   const profileByCode = useMemo(
     () => new Map(profiles.map((profile) => [profile.code, profile])),
     [profiles]
-  );
-
-  const inward = useMemo(
-    () =>
-      mergeStockInward(
-        apiInward,
-        (storeInward ?? []).map(normalizeStockInwardRecord),
-        deletedStockInwardIds ?? []
-      ),
-    [apiInward, storeInward, deletedStockInwardIds]
   );
 
   const profileCodes = useMemo(
@@ -110,13 +90,28 @@ export default function StockInwardPage() {
   const { filterContent, filtersActive, clearFilters, matchesCode } =
     useProfileCodeFilters(profileCodes);
 
+  const {
+    filterContent: dateFilterContent,
+    filtersActive: dateFiltersActive,
+    clearFilters: clearDateFilters,
+    matchesDate,
+  } = useDateRangeFilter();
+
   const filteredInward = useMemo(
     () =>
       inward.filter(
-        (row) => row.status !== "split" && matchesCode(row.profileCode)
+        (row) =>
+          row.status !== "split" &&
+          matchesCode(row.profileCode) &&
+          matchesDate(row.date)
       ),
-    [inward, matchesCode]
+    [inward, matchesCode, matchesDate]
   );
+
+  const handleClearAllFilters = useCallback(() => {
+    clearFilters();
+    clearDateFilters();
+  }, [clearFilters, clearDateFilters]);
 
   const handleAddStock = useCallback(
     async (entries: StockInward[]) => {
@@ -124,27 +119,24 @@ export default function StockInwardPage() {
       const entryIds = normalized.map((entry) => entry.id);
 
       normalized.forEach((entry) => addStockInward(entry));
+      syncStockInwardFromStore();
 
       const saved = await saveStockInwardEntriesApi(normalized);
       if (!saved) {
         revertStockInwardAdds(entryIds);
+        syncStockInwardFromStore();
         alert("Could not save stock inward. Please check that the backend is running.");
         throw new Error("stock inward save failed");
       }
 
       saved.forEach((entry) => upsertStockInward(entry));
-
-      const freshRows = await fetchStockInwardEntries(
-        useAppStore.getState().stockInward ?? [],
-        useAppStore.getState().deletedStockInwardIds ?? []
-      );
-      setApiInward(freshRows);
+      syncStockInwardFromStore();
 
       showAddedToast(
         saved.length > 1 ? `${saved.length} stock inward entries` : "Stock inward"
       );
     },
-    [addStockInward, upsertStockInward, revertStockInwardAdds, setApiInward]
+    [addStockInward, upsertStockInward, revertStockInwardAdds]
   );
 
   const handleSplit = useCallback(
@@ -177,6 +169,7 @@ export default function StockInwardPage() {
 
       upsertStockInward(saved.updatedParent);
       saved.children.forEach((child) => upsertStockInward(child));
+      syncStockInwardFromStore();
       setSplitOpen(false);
       setSplittingEntry(null);
     },
@@ -200,12 +193,14 @@ export default function StockInwardPage() {
       const normalized = entries.map(normalizeStockInwardRecord);
       const [baseEntry, ...additionalEntries] = normalized;
       const additionalIds = additionalEntries.map((entry) => entry.id);
+      const priorInward = (useAppStore.getState().stockInward ?? []).map((entry) => ({ ...entry }));
 
       normalized.forEach((entry) => upsertStockInward(entry));
 
       const savedBase = await updateStockInwardApi(baseEntry);
       if (!savedBase) {
-        alert("Could not update stock inward. Please check that the backend is running.");
+        useAppStore.setState({ stockInward: priorInward });
+        alertSyncFailure("Could not update stock inward on the server.");
         throw new Error("stock inward update failed");
       }
       upsertStockInward(savedBase);
@@ -213,28 +208,24 @@ export default function StockInwardPage() {
       if (additionalEntries.length > 0) {
         const savedAdditional = await saveStockInwardEntriesApi(additionalEntries);
         if (!savedAdditional) {
+          useAppStore.setState({ stockInward: priorInward });
           revertStockInwardAdds(additionalIds);
-          alert(
-            "Could not save additional stock inward entries. Please check that the backend is running."
+          alertSyncFailure(
+            "Could not save additional stock inward entries on the server."
           );
           throw new Error("stock inward additional save failed");
         }
         savedAdditional.forEach((entry) => upsertStockInward(entry));
       }
 
-      const freshRows = await fetchStockInwardEntries(
-        useAppStore.getState().stockInward ?? [],
-        useAppStore.getState().deletedStockInwardIds ?? []
-      );
-      setApiInward(freshRows);
+      normalized.forEach((entry) => upsertStockInward(entry));
 
+      syncStockInwardFromStore();
       showSavedToast(
         normalized.length > 1 ? `${normalized.length} stock inward entries` : "Stock inward"
       );
-      setEditOpen(false);
-      setEditingEntry(null);
     },
-    [upsertStockInward, revertStockInwardAdds, setApiInward]
+    [upsertStockInward, revertStockInwardAdds]
   );
 
   const handleDelete = useCallback(
@@ -392,6 +383,16 @@ export default function StockInwardPage() {
           formatNumber(row.totalWeightKg ?? row.weight ?? 0, 2),
       },
       {
+        key: "totalWeightManualKg",
+        header: "Total Weight Manual (Kg)",
+        className: "whitespace-nowrap tabular-nums",
+        align: "center" as const,
+        render: (row: StockInward) =>
+          row.totalWeightManualKg != null
+            ? formatNumber(row.totalWeightManualKg, 2)
+            : "—",
+      },
+      {
         key: "actions",
         header: "Actions",
         className: "whitespace-nowrap",
@@ -433,9 +434,9 @@ export default function StockInwardPage() {
         columns={columns}
         searchFilter={handleSearch}
         searchPlaceholder="Search inward no, invoice, die code, profile, or supplier..."
-        filterContent={filterContent}
-        filtersActive={filtersActive}
-        onClearFilters={clearFilters}
+        filterContent={combineTableFilters(filterContent, dateFilterContent)}
+        filtersActive={filtersActive || dateFiltersActive}
+        onClearFilters={handleClearAllFilters}
       />
       <EditStockInwardDialog
         entry={editingEntry}
@@ -443,7 +444,10 @@ export default function StockInwardPage() {
         vendors={vendors}
         existingInward={inward}
         open={editOpen}
-        onOpenChange={setEditOpen}
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) setEditingEntry(null);
+        }}
         onSave={handleUpdateStock}
       />
       <SplitStockInwardDialog

@@ -696,9 +696,11 @@ export function DataTable<T extends object>({
               paginatedRows.map((row, i) => {
                 const muted = isRowMuted?.(row) ?? false;
                 const serialNumber = pageStart + i + 1;
+                const rowId = (row as { id?: string }).id;
+                const rowKey = rowId ? `${rowId}-${pageStart + i}` : `row-${pageStart + i}`;
                 return (
                 <TableRow
-                  key={((row as { id?: string }).id) ?? pageStart + i}
+                  key={rowKey}
                   ref={(element) => {
                     rowRefs.current[i] = element;
                   }}
