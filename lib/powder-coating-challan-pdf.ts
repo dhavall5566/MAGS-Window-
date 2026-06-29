@@ -17,7 +17,7 @@ import {
   POWDER_COATING_RMTR_RATE_LABEL,
 } from "./profile";
 import { findVendorByPartyName } from "./vendor";
-import { formatGstNo, formatPdfDate } from "./utils";
+import { formatGstNo, formatPdfDate, metersToFeet } from "./utils";
 
 const C = {
   primary: [...BRAND.primaryRgb] as [number, number, number],
@@ -562,6 +562,7 @@ export async function generateChallanDocumentPDF(
           "COLOR",
           "UOM",
           "LENGTH (M)",
+          "LENGTH (FT)",
           POWDER_COATING_RMTR_RATE_LABEL.toUpperCase(),
           "QTY",
           "AMOUNT",
@@ -581,7 +582,7 @@ export async function generateChallanDocumentPDF(
   const baseColWidths = isOutward
     ? [14, 24, 20, 72, 14, 18, 14]
     : isPowderCoating
-      ? [12, 20, 18, 34, 16, 12, 16, 16, 12, 18]
+      ? [12, 20, 18, 30, 14, 11, 13, 13, 14, 11, 16]
       : [12, 20, 18, 40, 12, 16, 16, 12, 18];
 
   const baseSum = baseColWidths.reduce((sum, w) => sum + w, 0);
@@ -620,6 +621,7 @@ export async function generateChallanDocumentPDF(
 
     const rate = getItemRate(item, profile, coatingFormulaRate);
     const amount = calculatePowderCoatingItemAmount(item, profile, coatingFormulaRate);
+    const lengthFeet = length > 0 ? metersToFeet(length) : 0;
     const row = [
       String(index + 1),
       item.profileCode ?? "-",
@@ -630,6 +632,7 @@ export async function generateChallanDocumentPDF(
     row.push(
       "MTR",
       formatPdfDecimal(length, 2),
+      lengthFeet > 0 ? formatPdfDecimal(lengthFeet, 2) : "",
       formatPdfDecimal(rate),
       qty ? String(qty) : "",
       formatPdfDecimal(amount)
