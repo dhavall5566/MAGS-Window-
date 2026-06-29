@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { VISIBLE_NAV_ORDER, getGroupLabel, getOrderedNavItems, isNavTabActive } from "@/lib/nav-items";
 import { useAppStore } from "@/lib/store";
 import { showSavedToast, runAfterToast } from "@/lib/toast";
+import { saveAppSettingsApi } from "@/lib/app-settings-api";
 import { cn } from "@/lib/utils";
 
 function reorderList(order: string[], fromIndex: number, toIndex: number) {
@@ -118,6 +119,10 @@ export function SidebarTabsEditor() {
       () => {
         setNavOrder(draftOrder);
         setHiddenNavHrefs(draftHiddenNavHrefs);
+        void saveAppSettingsApi({
+          navOrder: draftOrder,
+          hiddenNavHrefs: draftHiddenNavHrefs,
+        });
       }
     );
   };
@@ -129,6 +134,7 @@ export function SidebarTabsEditor() {
 
   const handleApplyDefault = () => {
     resetNavOrder();
+    void saveAppSettingsApi({ navOrder: null, hiddenNavHrefs: [] });
   };
 
   const startDrag = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {

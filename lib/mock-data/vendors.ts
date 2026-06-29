@@ -2,8 +2,21 @@ import type { Vendor, VendorType } from "@/types";
 import { COMPANY, DELIVERY_CHALLAN, PURCHASE_ORDER } from "@/lib/company";
 import {
   MAGS_OUTWARD_CHALLAN_VENDOR_ID,
+  MAAHI_DELIVERY_CHALLAN_FROM_VENDOR_ID,
   MAAHI_POWDER_COATING_VENDOR_ID,
 } from "@/lib/vendor-ids";
+
+const maahiVendorDetails = {
+  partyName: "MAAHI ALUGLAZE SYSTEM",
+  partyAddress: PURCHASE_ORDER.addressLine,
+  gstNo: "24BHUPP0334A1ZM",
+  challanHeaderName: PURCHASE_ORDER.companyName,
+  challanAddressLine1: "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3",
+  challanAddressLine2: "Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
+  challanEmail: "brij.prajapati07@gmail.com",
+  challanPhone: "9974293086",
+  challanSignatoryLine: "For, MAAHI ALUGLAZE SYSTEM",
+} as const;
 
 const vendorRows: Pick<
   Vendor,
@@ -34,16 +47,13 @@ const vendorRows: Pick<
   },
   {
     id: MAAHI_POWDER_COATING_VENDOR_ID,
-    partyName: "MAAHI ALUGLAZE SYSTEM",
-    partyAddress: PURCHASE_ORDER.addressLine,
+    ...maahiVendorDetails,
     vendorType: "outward_challan",
-    gstNo: "24BHUPP0334A1ZM",
-    challanHeaderName: PURCHASE_ORDER.companyName,
-    challanAddressLine1: "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3",
-    challanAddressLine2: "Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
-    challanEmail: "brij.prajapati07@gmail.com",
-    challanPhone: "9974293086",
-    challanSignatoryLine: "For, MAAHI ALUGLAZE SYSTEM",
+  },
+  {
+    id: MAAHI_DELIVERY_CHALLAN_FROM_VENDOR_ID,
+    ...maahiVendorDetails,
+    vendorType: "delivery_challan_from",
   },
   {
     id: "ven-001",
@@ -232,7 +242,10 @@ export const mockVendors: Vendor[] = vendorRows.map((vendor) => {
       gstNo: vendor.gstNo ?? "",
     };
   }
-  if (vendor.id === MAAHI_POWDER_COATING_VENDOR_ID) {
+  if (
+    vendor.id === MAAHI_POWDER_COATING_VENDOR_ID ||
+    vendor.id === MAAHI_DELIVERY_CHALLAN_FROM_VENDOR_ID
+  ) {
     return {
       ...vendor,
       personName: "Brijesh Prajapati",

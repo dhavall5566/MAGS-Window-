@@ -1,11 +1,14 @@
 "use client";
 
 import { startTransition, useEffect } from "react";
+import { fetchAppSettingsApi } from "@/lib/app-settings-api";
 import { fetchJson } from "@/lib/fetch-json";
 import { filterVisibleChallans, getManualConsumption } from "@/lib/challan-consumption";
 import { mergeListsByIdPreferLocal } from "@/lib/merge-lists";
 import { normalizeProfile } from "@/lib/profile";
+import { normalizeModuleRolePermissions } from "@/lib/role-permissions";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
+import { mergeUsersLists } from "@/lib/user-merge";
 import { mergeVendorLists } from "@/lib/vendor-merge";
 import { useAppStore } from "@/lib/store";
 import { seedFetchCacheFromAppStore } from "@/lib/seed-fetch-cache";
@@ -15,8 +18,10 @@ import type {
   PowderCoating,
   Profile,
   PurchaseOrder,
+  Report,
   SeriesName,
   StockInward,
+  User,
   Vendor,
 } from "@/types";
 
@@ -37,6 +42,8 @@ function shouldRefreshStore(
     challans: Challan[];
     powderCoating: PowderCoating[];
     vendors: Vendor[];
+    users: User[];
+    reports: Report[];
   }
 ): boolean {
   return (
@@ -55,7 +62,11 @@ function shouldRefreshStore(
     listSignature(current.powderCoating, (item) => item.id) !==
       listSignature(next.powderCoating, (item) => item.id) ||
     listSignature(current.vendors, (item) => item.id) !==
-      listSignature(next.vendors, (item) => item.id)
+      listSignature(next.vendors, (item) => item.id) ||
+    listSignature(current.users, (item) => item.id) !==
+      listSignature(next.users, (item) => item.id) ||
+    listSignature(current.reports, (item) => item.id) !==
+      listSignature(next.reports, (item) => item.id)
   );
 }
 
@@ -81,6 +92,8 @@ export function StoreDataBootstrap() {
         challansResult,
         powderCoatingResult,
         vendorsResult,
+        usersResult,
+        appSettingsResult,
       ] = await Promise.all([
         fetchJson<{ series?: SeriesName[] }>("/api/series"),
         fetchJson<{ profiles?: Profile[] }>("/api/profiles"),
@@ -90,6 +103,8 @@ export function StoreDataBootstrap() {
         fetchJson<{ challans?: Challan[] }>("/api/challans"),
         fetchJson<{ powderCoating?: PowderCoating[] }>("/api/powder-coating"),
         fetchJson<{ vendors?: Vendor[] }>("/api/vendors"),
+        fetchJson<{ users?: User[] }>("/api/users"),
+        fetchAppSettingsApi(),
       ]);
 
       if (cancelled) return;
@@ -131,6 +146,26 @@ export function StoreDataBootstrap() {
           current.powderCoating ?? []
         ),
         vendors: mergedVendors,
+        users: mergeUsersLists(usersResult.users ?? [], current.users ?? []),
+        reports: mergeListsByIdPreferLocal(
+          appSettingsResult.reports ?? [],
+          current.reports ?? []
+        ),
+        navOrder: current.navOrder ?? appSettingsResult.navOrder ?? null,
+        hiddenNavHrefs:
+          current.hiddenNavHrefs?.length
+            ? current.hiddenNavHrefs
+            : (appSettingsResult.hiddenNavHrefs ?? []),
+        rolePermissions: current.rolePermissions
+          ? current.rolePermissions
+          : appSettingsResult.rolePermissions
+            ? normalizeModuleRolePermissions(appSettingsResult.rolePermissions)
+            : current.rolePermissions,
+        userPermissionOverrides:
+          Object.keys(current.userPermissionOverrides ?? {}).length > 0
+            ? current.userPermissionOverrides
+            : (appSettingsResult.userPermissionOverrides ?? {}),
+        settings: current.settings ?? appSettingsResult.settings ?? current.settings,
       };
 
       if (!shouldRefreshStore(current, next)) return;

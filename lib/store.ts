@@ -352,7 +352,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 52,
+      version: 53,
       skipHydration: true,
       partialize: (state) => ({
         navOrder: state.navOrder,
@@ -450,6 +450,15 @@ export const useAppStore = create<AppState>()(
         const migratedUserOverrides = migrateUserPermissionOverrides(
           state.userPermissionOverrides
         );
+
+        if (fromVersion === 52) {
+          return {
+            ...state,
+            vendors: mergeVendorLists([], state.vendors ?? []),
+            rolePermissions: migratedRolePermissions,
+            userPermissionOverrides: migratedUserOverrides,
+          };
+        }
 
         if (fromVersion >= 51) {
           const mockVendorIds = new Set(mockVendors.map((vendor) => vendor.id));

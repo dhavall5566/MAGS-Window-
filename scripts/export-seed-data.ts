@@ -28,7 +28,7 @@ import { mockUsers } from "../lib/mock-data/users";
 import { mockVendors } from "../lib/mock-data/vendors";
 import { deriveSeriesNamesFromProfiles } from "../lib/series";
 
-const outDir = join(__dirname, "../../API MAGS/seed/data");
+const outDir = join(__dirname, "../../Api-MAGS-devansh-main/seed/data");
 mkdirSync(outDir, { recursive: true });
 
 const files: Record<string, unknown> = {

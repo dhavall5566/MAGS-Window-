@@ -21,7 +21,6 @@ export const DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX = "-powder-coating-mirro
 const RETIRED_MOCK_VENDOR_IDS = new Set([
   "ven-delivery-challan-from",
   `ven-delivery-challan-from${DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX}`,
-  "ven-maahi-delivery-challan-from",
   `ven-maahi-delivery-challan-from${DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX}`,
 ]);
 

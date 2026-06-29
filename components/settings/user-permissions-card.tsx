@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { CrudPermissionSwitch } from "@/components/settings/crud-permission-checks";
 import { SettingsPanel, SettingsSection } from "@/components/settings/settings-section";
+import { saveAppSettingsApi } from "@/lib/app-settings-api";
 import { useAppStore } from "@/lib/store";
 import {
   CRUD_ACTIONS,
@@ -77,20 +78,22 @@ export function UserPermissionsCard() {
     enabled: boolean,
     roleDefault: ReturnType<typeof getRoleDefaultCrud>
   ) => {
-    setUserPermissionOverrides(
-      setUserCrudOverride(
-        userPermissionOverrides,
-        userId,
-        permKey,
-        action,
-        enabled,
-        roleDefault
-      )
+    const next = setUserCrudOverride(
+      userPermissionOverrides,
+      userId,
+      permKey,
+      action,
+      enabled,
+      roleDefault
     );
+    setUserPermissionOverrides(next);
+    void saveAppSettingsApi({ userPermissionOverrides: next });
   };
 
   const handleResetUser = (userId: string) => {
-    setUserPermissionOverrides(clearUserPermissionOverrides(userPermissionOverrides, userId));
+    const next = clearUserPermissionOverrides(userPermissionOverrides, userId);
+    setUserPermissionOverrides(next);
+    void saveAppSettingsApi({ userPermissionOverrides: next });
   };
 
   const selectedStats = useMemo(() => {

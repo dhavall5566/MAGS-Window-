@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
+import { createUserApi } from "@/lib/user-api";
+import { showAddedToast } from "@/lib/toast";
 import type { User } from "@/types";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -20,6 +22,19 @@ export default function UsersPage() {
   const { canCreate } = useModuleCrud("users");
   const users = useAppStore((s) => s.users);
   const addUser = useAppStore((s) => s.addUser);
+
+  const handleAddUser = useCallback(
+    async (user: User) => {
+      addUser(user);
+      const saved = await createUserApi(user);
+      if (!saved) {
+        alert("User was saved locally but could not be synced to the server.");
+        return;
+      }
+      showAddedToast("User");
+    },
+    [addUser]
+  );
 
   const existingEmails = useMemo(
     () => (users ?? []).map((user) => user.email),
@@ -93,7 +108,7 @@ export default function UsersPage() {
     <div>
       <PageHeader title="User Management" description="Manage system users and role-based access">
         {canCreate ? (
-          <AddUserDialog existingEmails={existingEmails} onSave={addUser} />
+          <AddUserDialog existingEmails={existingEmails} onSave={handleAddUser} />
         ) : null}
       </PageHeader>
       <DataTable

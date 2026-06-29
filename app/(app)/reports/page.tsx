@@ -16,6 +16,7 @@ import type { ReportApiData } from "@/lib/report-content";
 import { getReportTypeLabel } from "@/lib/report-form";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
+import { createReportRecordApi, deleteReportRecordApi } from "@/lib/app-settings-api";
 import type { Report } from "@/types";
 
 const ReportChartPanel = dynamic(
@@ -39,6 +40,31 @@ export default function ReportsPage() {
   const reports = useAppStore((s) => s.reports);
   const addReport = useAppStore((s) => s.addReport);
   const deleteReport = useAppStore((s) => s.deleteReport);
+
+  const handleAddReport = useCallback(
+    async (report: Report) => {
+      addReport(report);
+      const saved = await createReportRecordApi(report);
+      if (!saved) {
+        alert("Report was saved locally but could not be synced to the server.");
+      }
+    },
+    [addReport]
+  );
+
+  const handleDeleteReport = useCallback(
+    async (report: Report) => {
+      if (!confirm(`Delete report ${report.reportNo}?`)) return;
+      deleteReport(report.id);
+      if (chartReport?.id === report.id) setChartReport(null);
+      const ok = await deleteReportRecordApi(report.id);
+      if (!ok) {
+        addReport(report);
+        alert("Could not delete report from the server. It was restored locally.");
+      }
+    },
+    [addReport, chartReport?.id, deleteReport]
+  );
 
   useEffect(() => {
     fetchJson<Record<string, unknown>>("/api/reports").then(setData);
@@ -215,12 +241,7 @@ export default function ReportsPage() {
               size="icon"
               className="h-8 w-8 text-destructive hover:text-destructive"
               aria-label="Delete report"
-              onClick={() => {
-                if (confirm(`Delete report ${row.reportNo}?`)) {
-                  deleteReport(row.id);
-                  if (chartReport?.id === row.id) setChartReport(null);
-                }
-              }}
+              onClick={() => void handleDeleteReport(row)}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -234,7 +255,7 @@ export default function ReportsPage() {
     <div>
       <PageHeader title="Reports" description="Analytics and operational reports for management">
         {canCreate ? (
-          <CreateReportDialog existingReports={reports ?? []} onSave={addReport} />
+          <CreateReportDialog existingReports={reports ?? []} onSave={handleAddReport} />
         ) : null}
       </PageHeader>
 
