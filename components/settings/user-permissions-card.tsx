@@ -16,6 +16,7 @@ import {
 import { CrudPermissionSwitch } from "@/components/settings/crud-permission-checks";
 import { SettingsPanel, SettingsSection } from "@/components/settings/settings-section";
 import { saveAppSettingsApi } from "@/lib/app-settings-api";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
 import {
   CRUD_ACTIONS,
@@ -71,13 +72,14 @@ export function UserPermissionsCard() {
 
   const selectedUser = filteredUsers.find((user) => user.id === selectedUserId) ?? null;
 
-  const handleCrudChange = (
+  const handleCrudChange = async (
     userId: string,
     permKey: string,
     action: CrudAction,
     enabled: boolean,
     roleDefault: ReturnType<typeof getRoleDefaultCrud>
   ) => {
+    const previous = userPermissionOverrides;
     const next = setUserCrudOverride(
       userPermissionOverrides,
       userId,
@@ -87,13 +89,22 @@ export function UserPermissionsCard() {
       roleDefault
     );
     setUserPermissionOverrides(next);
-    void saveAppSettingsApi({ userPermissionOverrides: next });
+    const saved = await saveAppSettingsApi({ userPermissionOverrides: next });
+    if (!saved) {
+      setUserPermissionOverrides(previous);
+      alertSyncFailure("Could not save permission changes to the server.");
+    }
   };
 
-  const handleResetUser = (userId: string) => {
+  const handleResetUser = async (userId: string) => {
+    const previous = userPermissionOverrides;
     const next = clearUserPermissionOverrides(userPermissionOverrides, userId);
     setUserPermissionOverrides(next);
-    void saveAppSettingsApi({ userPermissionOverrides: next });
+    const saved = await saveAppSettingsApi({ userPermissionOverrides: next });
+    if (!saved) {
+      setUserPermissionOverrides(previous);
+      alertSyncFailure("Could not reset permission overrides on the server.");
+    }
   };
 
   const selectedStats = useMemo(() => {

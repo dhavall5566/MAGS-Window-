@@ -13,6 +13,7 @@ import {
   deletePowderCoatingApi,
   updatePowderCoatingApi,
 } from "@/lib/powder-coating-api";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { mergeProfiles } from "@/lib/profile";
 import { useAppStore } from "@/lib/store";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
@@ -113,20 +114,31 @@ export default function PowderCoatingPage() {
         useAppStore.getState().powderCoating ?? []
       );
       const saved = await createPowderCoatingApi(entry);
-      if (saved) {
-        updatePowderCoating(saved.id, saved);
+      if (!saved) {
+        deletePowderCoating(entry.id);
         syncListCache(
           "/api/powder-coating",
           "powderCoating",
           useAppStore.getState().powderCoating ?? []
         );
+        alertSyncFailure("Could not save powder coating entry to the server.");
+        return;
       }
+      updatePowderCoating(saved.id, saved);
+      syncListCache(
+        "/api/powder-coating",
+        "powderCoating",
+        useAppStore.getState().powderCoating ?? []
+      );
     },
-    [addPowderCoating, updatePowderCoating]
+    [addPowderCoating, deletePowderCoating, updatePowderCoating]
   );
 
   const handleUpdate = useCallback(
     async (entry: PowderCoating) => {
+      const previous = (useAppStore.getState().powderCoating ?? []).find(
+        (item) => item.id === entry.id
+      );
       const { id, ...updates } = entry;
       updatePowderCoating(id, updates);
       syncListCache(
@@ -135,14 +147,24 @@ export default function PowderCoatingPage() {
         useAppStore.getState().powderCoating ?? []
       );
       const saved = await updatePowderCoatingApi(id, updates);
-      if (saved) {
-        updatePowderCoating(saved.id, saved);
+      if (!saved) {
+        if (previous) {
+          updatePowderCoating(id, previous);
+        }
         syncListCache(
           "/api/powder-coating",
           "powderCoating",
           useAppStore.getState().powderCoating ?? []
         );
+        alertSyncFailure("Could not update powder coating entry on the server.");
+        return;
       }
+      updatePowderCoating(saved.id, saved);
+      syncListCache(
+        "/api/powder-coating",
+        "powderCoating",
+        useAppStore.getState().powderCoating ?? []
+      );
       setEditOpen(false);
       setEditingEntry(null);
     },

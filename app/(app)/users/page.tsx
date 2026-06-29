@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { createUserApi } from "@/lib/user-api";
-import { showAddedToast } from "@/lib/toast";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import type { User } from "@/types";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -22,18 +22,21 @@ export default function UsersPage() {
   const { canCreate } = useModuleCrud("users");
   const users = useAppStore((s) => s.users);
   const addUser = useAppStore((s) => s.addUser);
+  const replaceUser = useAppStore((s) => s.replaceUser);
+  const deleteUser = useAppStore((s) => s.deleteUser);
 
   const handleAddUser = useCallback(
     async (user: User) => {
       addUser(user);
       const saved = await createUserApi(user);
       if (!saved) {
-        alert("User was saved locally but could not be synced to the server.");
+        deleteUser(user.id);
+        alertSyncFailure("User was saved locally but could not be synced to the server.");
         return;
       }
-      showAddedToast("User");
+      replaceUser(saved);
     },
-    [addUser]
+    [addUser, deleteUser, replaceUser]
   );
 
   const existingEmails = useMemo(

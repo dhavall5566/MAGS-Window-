@@ -1,7 +1,115 @@
 import { getProfileStockKey } from "@/lib/challan-consumption";
 import { formatStockLength } from "@/lib/stock-inward-calculations";
-import { buildStockMasterRows, normalizeStockLength } from "@/lib/stock-master";
+import {
+  buildStockMasterRows,
+  getStockMasterRowKey,
+  normalizeStockLength,
+} from "@/lib/stock-master";
 import type { Consumption, StockInward } from "@/types";
+
+export const OUTWARD_STOCK_UNAVAILABLE_MESSAGE = "This item is not in stock.";
+
+export interface OutwardChallanLineItem {
+  profileCode: string;
+  profileName?: string;
+  length: number;
+  qty: number;
+}
+
+export function getOutwardStockReservationKey(
+  profileCode: string,
+  profileName: string | undefined,
+  length: number
+): string {
+  return getStockMasterRowKey({
+    profileCode,
+    profileName: profileName ?? profileCode,
+    length: normalizeStockLength(length),
+  });
+}
+
+/** Available profile count (NOS) at profile + length after inward and consumption. */
+export function getAvailableOutwardStockQty(
+  profileCode: string,
+  profileName: string | undefined,
+  length: number,
+  inward: StockInward[],
+  consumption: Consumption[]
+): number {
+  const normalizedLength = normalizeStockLength(length);
+  if (!profileCode?.trim() || !normalizedLength) return 0;
+
+  const key = getOutwardStockReservationKey(profileCode, profileName, normalizedLength);
+  const row = buildStockMasterRows(inward, consumption).find((entry) => entry.id === key);
+  return row?.totalProfiles ?? 0;
+}
+
+export function getReservedOutwardQtyForKey(
+  items: OutwardChallanLineItem[],
+  key: string
+): number {
+  return items.reduce((total, item) => {
+    const itemKey = getOutwardStockReservationKey(
+      item.profileCode,
+      item.profileName,
+      Number(item.length) || 0
+    );
+    if (itemKey !== key) return total;
+    return total + Math.max(0, Number(item.qty) || 0);
+  }, 0);
+}
+
+export function getOutwardLineStockIssue(
+  item: OutwardChallanLineItem,
+  items: OutwardChallanLineItem[],
+  inward: StockInward[],
+  consumption: Consumption[]
+): string | null {
+  if (!item.profileCode?.trim()) return null;
+
+  const length = Number(item.length) || 0;
+  const qty = Math.max(0, Number(item.qty) || 0);
+  if (!length || !qty) return null;
+
+  const key = getOutwardStockReservationKey(item.profileCode, item.profileName, length);
+  const available = getAvailableOutwardStockQty(
+    item.profileCode,
+    item.profileName,
+    length,
+    inward,
+    consumption
+  );
+  const totalRequested = getReservedOutwardQtyForKey(items, key);
+
+  if (available <= 0 || totalRequested > available) {
+    return OUTWARD_STOCK_UNAVAILABLE_MESSAGE;
+  }
+
+  return null;
+}
+
+export function findFirstOutwardStockIssue(
+  items: OutwardChallanLineItem[],
+  inward: StockInward[],
+  consumption: Consumption[]
+): { index: number; message: string; profileCode: string } | null {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const message = getOutwardLineStockIssue(item, items, inward, consumption);
+    if (message) {
+      return { index, message, profileCode: item.profileCode };
+    }
+  }
+  return null;
+}
+
+export function hasOutwardStockIssues(
+  items: OutwardChallanLineItem[],
+  inward: StockInward[],
+  consumption: Consumption[]
+): boolean {
+  return findFirstOutwardStockIssue(items, inward, consumption) !== null;
+}
 
 function matchesProfileStockKey(
   entry: Pick<StockInward, "profileCode" | "profileName">,

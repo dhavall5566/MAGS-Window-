@@ -5,11 +5,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { saveAppSettingsApi } from "@/lib/app-settings-api";
+import { DEFAULT_APP_SETTINGS } from "@/lib/app-settings";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
+import type { AppSettings } from "@/lib/app-settings";
+
+async function persistSettings(updates: Partial<AppSettings>) {
+  const current = useAppStore.getState().settings ?? DEFAULT_APP_SETTINGS;
+  const next = { ...DEFAULT_APP_SETTINGS, ...current, ...updates };
+  useAppStore.getState().updateSettings(updates);
+  const saved = await saveAppSettingsApi({ settings: next });
+  if (!saved) {
+    useAppStore.getState().updateSettings(current);
+    alertSyncFailure("Could not save workflow defaults to the server.");
+  }
+}
 
 export function WorkflowDefaultsCard() {
   const settings = useAppStore((s) => s.settings);
-  const updateSettings = useAppStore((s) => s.updateSettings);
 
   return (
     <Card>
@@ -35,7 +49,7 @@ export function WorkflowDefaultsCard() {
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (!Number.isNaN(value) && value > 0) {
-                  updateSettings({ defaultChallanLength: value });
+                  void persistSettings({ defaultChallanLength: value });
                 }
               }}
             />
@@ -55,7 +69,7 @@ export function WorkflowDefaultsCard() {
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (!Number.isNaN(value) && value >= 0) {
-                  updateSettings({ lowStockThresholdKg: value });
+                  void persistSettings({ lowStockThresholdKg: value });
                 }
               }}
             />
@@ -75,7 +89,9 @@ export function WorkflowDefaultsCard() {
           <Switch
             id="highlight-low-stock"
             checked={settings.highlightLowStock}
-            onCheckedChange={(checked) => updateSettings({ highlightLowStock: checked })}
+            onCheckedChange={(checked) => {
+              void persistSettings({ highlightLowStock: checked });
+            }}
           />
         </div>
       </CardContent>

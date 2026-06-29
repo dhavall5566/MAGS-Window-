@@ -53,8 +53,11 @@ import {
 } from "@/lib/challan-outward";
 import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
 import {
+  findFirstOutwardStockIssue,
   formatSplitLengthOption,
   getOutwardChallanSplitLengthOptions,
+  getOutwardLineStockIssue,
+  hasOutwardStockIssues,
   resolveOutwardChallanItemLength,
 } from "@/lib/outward-challan-stock-lengths";
 import {
@@ -70,7 +73,7 @@ import {
   getDeliveryChallanFromVendors,
   getOutwardChallanIssuerVendors,
 } from "@/lib/outward-challan-branding";
-import { formatNumber, generateId, metersToFeet } from "@/lib/utils";
+import { cn, formatNumber, generateId, metersToFeet } from "@/lib/utils";
 import { DEFAULT_APP_SETTINGS } from "@/lib/app-settings";
 import { useAppStore } from "@/lib/store";
 import {
@@ -362,6 +365,11 @@ export function ChallanFormDialog({
     return consumption;
   }, [allChallans, isEdit, challanToEdit?.id]);
 
+  const outwardStockBlocked = useMemo(() => {
+    if (type !== "outward") return false;
+    return hasOutwardStockIssues(watchedItems, mergedInward, stockConsumption);
+  }, [type, watchedItems, mergedInward, stockConsumption]);
+
   const outwardChallanIssuerVendors = useMemo(
     () => getOutwardChallanIssuerVendors(normalizedVendors),
     [normalizedVendors]
@@ -646,6 +654,18 @@ export function ChallanFormDialog({
   };
 
   const onSubmit = (data: OutwardForm | CoatingForm) => {
+    if (type === "outward") {
+      const stockIssue = findFirstOutwardStockIssue(
+        data.items,
+        mergedInward,
+        stockConsumption
+      );
+      if (stockIssue) {
+        alert(`${stockIssue.message} (${stockIssue.profileCode})`);
+        return;
+      }
+    }
+
     const coatingManualRate =
       isPowderCoating && Number((data as CoatingForm).coatingRate) > 0
         ? Number((data as CoatingForm).coatingRate)
@@ -784,6 +804,7 @@ export function ChallanFormDialog({
           submitLabel={isEdit ? "Save Changes" : "Create Challan"}
           loadingLabel="Saving"
           isSubmitting={form.formState.isSubmitting}
+          disabled={outwardStockBlocked}
         />
       }
     >
@@ -1116,12 +1137,35 @@ export function ChallanFormDialog({
                 itemRmtrRate
               );
               const itemLengthFeet = metersToFeet(normalizedItemLength);
+              const outwardStockIssue =
+                type === "outward" && itemProfileCode
+                  ? getOutwardLineStockIssue(
+                      {
+                        profileCode: itemProfileCode,
+                        profileName: itemProfileName,
+                        length: Number(itemLength) || 0,
+                        qty: Number(itemQty) || 0,
+                      },
+                      (watchedItems ?? []).map((item) => ({
+                        profileCode: item.profileCode,
+                        profileName: item.profileName,
+                        length: Number(item.length) || 0,
+                        qty: Number(item.qty) || 0,
+                      })),
+                      mergedInward,
+                      stockConsumption
+                    )
+                  : null;
 
               return (
               <div
                 key={field.id}
-                className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-end"
+                className={cn(
+                  "flex flex-col gap-3 rounded-lg border p-3",
+                  outwardStockIssue && "border-destructive/50 bg-destructive/5"
+                )}
               >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="min-w-0 flex-[2] space-y-1">
                   <Label className="text-xs">Profile</Label>
                   <SearchableSelect
@@ -1278,6 +1322,10 @@ export function ChallanFormDialog({
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
+              </div>
+              {outwardStockIssue ? (
+                <p className="text-xs font-medium text-destructive">{outwardStockIssue}</p>
+              ) : null}
               </div>
             );
             })}

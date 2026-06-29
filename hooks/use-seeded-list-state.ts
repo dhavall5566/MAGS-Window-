@@ -84,10 +84,8 @@ export function useCachedOrStoreList<T, K extends string>(
       const local = storeSelectorRef.current(useAppStore.getState()) ?? [];
       let next: T[] = remote;
       if (url === "/api/challans" && listKey === "challans") {
-        next = mergeChallans(
-          remote as Challan[],
-          local as Challan[]
-        ) as T[];
+        next = mergeChallans(remote as Challan[], local as Challan[]) as T[];
+        useAppStore.setState({ challans: next as Challan[] });
       } else if (local.length > 0) {
         next = mergeListsByIdPreferLocal(
           remote as Array<T & { id: string }>,

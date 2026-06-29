@@ -27,6 +27,7 @@ import { formatDate, formatNumber } from "@/lib/utils";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
 import type { Profile, StockInward } from "@/types";
 
@@ -239,7 +240,6 @@ export default function StockInwardPage() {
   const handleDelete = useCallback(
     async (row: StockInward) => {
       if (!confirm(`Delete stock inward ${row.inwardNo}?`)) return;
-      showDeletedToast("Stock inward");
       deleteStockInward(row.id);
       if (editingEntry?.id === row.id) {
         setEditingEntry(null);
@@ -248,8 +248,16 @@ export default function StockInwardPage() {
 
       const ok = await deleteStockInwardApi(row.id);
       if (!ok) {
-        alert("Could not delete stock inward. Please check that the backend is running.");
+        useAppStore.setState((state) => ({
+          stockInward: [...(state.stockInward ?? []), row],
+          deletedStockInwardIds: (state.deletedStockInwardIds ?? []).filter(
+            (id) => id !== row.id
+          ),
+        }));
+        alertSyncFailure("Could not delete stock inward from the server.");
+        return;
       }
+      showDeletedToast("Stock inward");
     },
     [deleteStockInward, editingEntry?.id]
   );

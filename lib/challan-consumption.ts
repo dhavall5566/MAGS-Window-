@@ -69,6 +69,7 @@ export function consumptionEntriesFromStockChallans(challans: Challan[]): Consum
   return challans.filter(isStockAffectingChallan).flatMap(consumptionEntriesFromChallan);
 }
 
+/** Merge challans: API/DB is canonical; local store only overlays fields for ids already on the server. */
 export function mergeChallans(api: Challan[], store: Challan[]): Challan[] {
   const byId = new Map<string, Challan>();
 
@@ -80,10 +81,21 @@ export function mergeChallans(api: Challan[], store: Challan[]): Challan[] {
   for (const entry of store) {
     if (!entry?.id) continue;
     const existing = byId.get(entry.id);
-    byId.set(entry.id, existing ? { ...existing, ...entry } : { ...entry });
+    if (existing) {
+      byId.set(entry.id, { ...existing, ...entry });
+    }
   }
 
   return filterVisibleChallans(Array.from(byId.values()));
+}
+
+/** Append a challan that is not yet reflected in the latest API list (optimistic create). */
+export function appendChallanIfMissing(list: Challan[], challan: Challan): Challan[] {
+  if (!challan?.id) return list;
+  if (list.some((entry) => entry.id === challan.id)) {
+    return list.map((entry) => (entry.id === challan.id ? challan : entry));
+  }
+  return filterVisibleChallans([...list, challan]);
 }
 
 export function buildOutwardConsumptionFromChallans(

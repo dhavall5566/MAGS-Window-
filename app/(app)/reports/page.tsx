@@ -17,6 +17,7 @@ import { getReportTypeLabel } from "@/lib/report-form";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { createReportRecordApi, deleteReportRecordApi } from "@/lib/app-settings-api";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import type { Report } from "@/types";
 
 const ReportChartPanel = dynamic(
@@ -46,10 +47,11 @@ export default function ReportsPage() {
       addReport(report);
       const saved = await createReportRecordApi(report);
       if (!saved) {
-        alert("Report was saved locally but could not be synced to the server.");
+        deleteReport(report.id);
+        alertSyncFailure("Report was saved locally but could not be synced to the server.");
       }
     },
-    [addReport]
+    [addReport, deleteReport]
   );
 
   const handleDeleteReport = useCallback(

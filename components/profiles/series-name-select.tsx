@@ -5,7 +5,10 @@ import { Plus } from "lucide-react";
 import { AddSeriesDialog } from "@/components/series/add-series-dialog";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
+import { syncListCache } from "@/lib/list-cache-sync";
+import { createSeriesApi } from "@/lib/series-api";
 import { getSeriesFormOptions, getSeriesLabel } from "@/lib/series";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
 import type { SeriesName } from "@/types";
 
@@ -29,15 +32,27 @@ export function SeriesNameSelect({
   const [createOpen, setCreateOpen] = useState(false);
   const seriesNames = useAppStore((s) => s.seriesNames);
   const addSeriesName = useAppStore((s) => s.addSeriesName);
+  const updateSeriesName = useAppStore((s) => s.updateSeriesName);
+  const deleteSeriesName = useAppStore((s) => s.deleteSeriesName);
 
   const seriesOptions = useMemo(
     () => getSeriesFormOptions(seriesNames ?? [], value),
     [seriesNames, value]
   );
 
-  const handleSaveSeries = (series: SeriesName) => {
+  const handleSaveSeries = async (series: SeriesName) => {
     addSeriesName(series);
-    onValueChange(getSeriesLabel(series));
+    syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
+    const saved = await createSeriesApi(series);
+    if (!saved) {
+      deleteSeriesName(series.id);
+      syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
+      alertSyncFailure("Could not save series to the server.");
+      return;
+    }
+    updateSeriesName(saved.id, saved);
+    syncListCache("/api/series", "series", useAppStore.getState().seriesNames ?? []);
+    onValueChange(getSeriesLabel(saved));
     setCreateOpen(false);
   };
 

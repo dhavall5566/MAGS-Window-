@@ -8,6 +8,7 @@ import { VISIBLE_NAV_ORDER, getGroupLabel, getOrderedNavItems, isNavTabActive } 
 import { useAppStore } from "@/lib/store";
 import { showSavedToast, runAfterToast } from "@/lib/toast";
 import { saveAppSettingsApi } from "@/lib/app-settings-api";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { cn } from "@/lib/utils";
 
 function reorderList(order: string[], fromIndex: number, toIndex: number) {
@@ -114,6 +115,8 @@ export function SidebarTabsEditor() {
     !ordersMatch(draftOrder, savedOrder) || !hiddenMatch(draftHiddenNavHrefs, savedHidden);
 
   const handleSave = () => {
+    const previousOrder = navOrder;
+    const previousHidden = hiddenNavHrefs ?? [];
     runAfterToast(
       () => showSavedToast("Navigation tabs"),
       () => {
@@ -122,6 +125,11 @@ export function SidebarTabsEditor() {
         void saveAppSettingsApi({
           navOrder: draftOrder,
           hiddenNavHrefs: draftHiddenNavHrefs,
+        }).then((saved) => {
+          if (saved) return;
+          setNavOrder(previousOrder);
+          setHiddenNavHrefs(previousHidden);
+          alertSyncFailure("Could not save navigation settings to the server.");
         });
       }
     );
@@ -133,8 +141,15 @@ export function SidebarTabsEditor() {
   };
 
   const handleApplyDefault = () => {
+    const previousOrder = navOrder;
+    const previousHidden = hiddenNavHrefs ?? [];
     resetNavOrder();
-    void saveAppSettingsApi({ navOrder: null, hiddenNavHrefs: [] });
+    void saveAppSettingsApi({ navOrder: null, hiddenNavHrefs: [] }).then((saved) => {
+      if (saved) return;
+      setNavOrder(previousOrder);
+      setHiddenNavHrefs(previousHidden);
+      alertSyncFailure("Could not reset navigation settings on the server.");
+    });
   };
 
   const startDrag = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {

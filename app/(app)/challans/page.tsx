@@ -18,8 +18,9 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate, formatNumber } from "@/lib/utils";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
-import { mergeChallans } from "@/lib/challan-consumption";
+import { appendChallanIfMissing } from "@/lib/challan-consumption";
 import { createChallanApi, deleteChallanApi, updateChallanApi } from "@/lib/challan-api";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import { setJsonCacheEntry } from "@/lib/fetch-json";
 import {
   calculatePowderCoatingItemAmount,
@@ -255,7 +256,6 @@ function ChallanDetail({
 }
 
 export default function ChallansPage() {
-  const storeChallans = useAppStore((s) => s.challans);
   const storeProfiles = useAppStore((s) => s.profiles);
   const vendors = useAppStore((s) => s.vendors);
   const replaceChallan = useAppStore((s) => s.replaceChallan);
@@ -280,55 +280,59 @@ export default function ChallansPage() {
 
   const profiles = mergeProfiles(apiProfiles, storeProfiles ?? []);
 
-  const challans = useMemo(
-    () => mergeChallans(apiChallans, storeChallans ?? []),
-    [apiChallans, storeChallans]
-  );
+  const challans = apiChallans;
 
   const handleCreate = (challan: Challan) => {
     replaceChallan(challan);
-    const storeAfterSave = useAppStore.getState().challans ?? [];
-    const nextChallans = mergeChallans(apiChallans, storeAfterSave);
+    const nextChallans = appendChallanIfMissing(apiChallans, challan);
     setApiChallans(nextChallans);
     setJsonCacheEntry("/api/challans", { challans: nextChallans });
+    useAppStore.setState({ challans: nextChallans });
 
     void createChallanApi(challan).then((saved) => {
-      if (!saved) return;
-      useAppStore.setState((state) => {
-        const challans = (state.challans ?? []).map((row) =>
-          row.id === saved.id ? saved : row
-        );
-        return { challans };
-      });
-      const merged = mergeChallans(
-        apiChallans,
-        useAppStore.getState().challans ?? []
-      );
+      if (!saved) {
+        const reverted = apiChallans.filter((row) => row.id !== challan.id);
+        useAppStore.setState((state) => ({
+          challans: (state.challans ?? []).filter((row) => row.id !== challan.id),
+        }));
+        setApiChallans(reverted);
+        setJsonCacheEntry("/api/challans", { challans: reverted });
+        alertSyncFailure("Could not save challan to the server.");
+        return;
+      }
+      const merged = appendChallanIfMissing(apiChallans, saved);
+      useAppStore.setState({ challans: merged });
       setApiChallans(merged);
       setJsonCacheEntry("/api/challans", { challans: merged });
     });
   };
 
   const handleUpdate = (challan: Challan) => {
+    const previous = apiChallans.find((row) => row.id === challan.id) ?? null;
     replaceChallan(challan);
-    const storeAfterSave = useAppStore.getState().challans ?? [];
-    const nextChallans = mergeChallans(apiChallans, storeAfterSave);
+    const nextChallans = appendChallanIfMissing(apiChallans, challan);
     setApiChallans(nextChallans);
     setJsonCacheEntry("/api/challans", { challans: nextChallans });
+    useAppStore.setState({ challans: nextChallans });
     setEditOpen(false);
     setEditingChallan(null);
 
     void updateChallanApi(challan).then((saved) => {
-      if (!saved) return;
-      useAppStore.setState((state) => ({
-        challans: (state.challans ?? []).map((row) =>
-          row.id === saved.id ? saved : row
-        ),
-      }));
-      const merged = mergeChallans(
-        apiChallans,
-        useAppStore.getState().challans ?? []
+      if (!saved) {
+        const reverted = previous
+          ? apiChallans.map((row) => (row.id === previous.id ? previous : row))
+          : apiChallans.filter((row) => row.id !== challan.id);
+        useAppStore.setState({ challans: reverted });
+        setApiChallans(reverted);
+        setJsonCacheEntry("/api/challans", { challans: reverted });
+        alertSyncFailure("Could not update challan on the server.");
+        return;
+      }
+      const merged = appendChallanIfMissing(
+        apiChallans.filter((row) => row.id !== saved.id),
+        saved
       );
+      useAppStore.setState({ challans: merged });
       setApiChallans(merged);
       setJsonCacheEntry("/api/challans", { challans: merged });
     });
@@ -338,10 +342,22 @@ export default function ChallansPage() {
     if (!confirm(`Delete challan ${challan.challanNumber}? Consumption will be updated.`)) {
       return;
     }
+    const previous = challan;
     deleteChallan(challan.id);
-    setApiChallans((rows) => rows.filter((row) => row.id !== challan.id));
-    await deleteChallanApi(challan.id);
-  }, [deleteChallan, setApiChallans]);
+    const nextChallans = apiChallans.filter((row) => row.id !== challan.id);
+    setApiChallans(nextChallans);
+    setJsonCacheEntry("/api/challans", { challans: nextChallans });
+    useAppStore.setState({ challans: nextChallans });
+    const ok = await deleteChallanApi(challan.id);
+    if (!ok) {
+      const restored = appendChallanIfMissing(nextChallans, previous);
+      replaceChallan(previous);
+      setApiChallans(restored);
+      setJsonCacheEntry("/api/challans", { challans: restored });
+      useAppStore.setState({ challans: restored });
+      alertSyncFailure("Could not delete challan from the server.");
+    }
+  }, [apiChallans, deleteChallan, replaceChallan, setApiChallans]);
 
   const handleEdit = useCallback((challan: Challan) => {
     setEditingChallan(challan);

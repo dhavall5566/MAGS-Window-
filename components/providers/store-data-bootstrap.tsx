@@ -136,10 +136,9 @@ export function StoreDataBootstrap() {
           current.purchaseOrders ?? []
         ),
         challans: filterVisibleChallans(
-          mergeListsByIdPreferLocal(
-            challansResult.challans ?? [],
-            current.challans ?? []
-          ).map((challan) => enrichChallanVendorDetails(challan, mergedVendors))
+          (challansResult.challans ?? []).map((challan) =>
+            enrichChallanVendorDetails(challan, mergedVendors)
+          )
         ),
         powderCoating: mergeListsByIdPreferLocal(
           powderCoatingResult.powderCoating ?? [],

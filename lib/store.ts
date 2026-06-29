@@ -78,12 +78,15 @@ interface AppState {
   upsertVendor: (vendor: Vendor) => void;
   setVendors: (vendors: Vendor[]) => void;
   addUser: (user: User) => void;
+  updateUser: (id: string, updates: Partial<User>) => void;
+  replaceUser: (user: User) => void;
+  deleteUser: (id: string) => void;
   addReport: (report: Report) => void;
   deleteReport: (id: string) => void;
   addPurchaseOrder: (order: PurchaseOrder) => void;
   replacePurchaseOrder: (order: PurchaseOrder) => void;
   deletePurchaseOrder: (id: string) => void;
-  setNavOrder: (order: string[]) => void;
+  setNavOrder: (order: string[] | null) => void;
   setHiddenNavHrefs: (hrefs: string[]) => void;
   resetNavOrder: () => void;
   updateSettings: (updates: Partial<AppSettings>) => void;
@@ -309,6 +312,28 @@ export const useAppStore = create<AppState>()(
         }));
         showAddedToast("User");
       },
+      updateUser: (id, updates) => {
+        set((s) => ({
+          users: (s.users ?? []).map((user) =>
+            user.id === id ? { ...user, ...updates } : user
+          ),
+        }));
+      },
+      replaceUser: (user) => {
+        set((s) => ({
+          users: (s.users ?? []).map((entry) => (entry.id === user.id ? user : entry)),
+        }));
+      },
+      deleteUser: (id) => {
+        set((s) => {
+          const nextOverrides = { ...(s.userPermissionOverrides ?? {}) };
+          delete nextOverrides[id];
+          return {
+            users: (s.users ?? []).filter((user) => user.id !== id),
+            userPermissionOverrides: nextOverrides,
+          };
+        });
+      },
       addReport: (report) => {
         set((s) => ({ reports: [...(s.reports ?? []), report] }));
         showAddedToast("Report");
@@ -352,7 +377,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "mags-app-store",
-      version: 53,
+      version: 54,
       skipHydration: true,
       partialize: (state) => ({
         navOrder: state.navOrder,
@@ -361,7 +386,6 @@ export const useAppStore = create<AppState>()(
         rolePermissions: state.rolePermissions,
         userPermissionOverrides: state.userPermissionOverrides,
         vendors: (state.vendors ?? []).map(normalizeVendor),
-        challans: filterVisibleChallans(state.challans ?? []),
         seriesNames: state.seriesNames ?? [],
         profiles: (state.profiles ?? []).map(normalizeProfile),
         stockInward: (state.stockInward ?? []).map((entry) =>
@@ -382,9 +406,7 @@ export const useAppStore = create<AppState>()(
       merge: (persisted, current) => {
         const saved = persisted as Partial<AppState>;
         const mockUserIds = new Set(mockUsers.map((user) => user.id));
-        const mergedChallans = filterVisibleChallans(
-          mergeListsByIdPreferLocal(saved.challans ?? [], current.challans ?? [])
-        );
+        const mergedChallans = filterVisibleChallans(current.challans ?? []);
         const mergedDeletedStockInwardIds = [
           ...new Set([
             ...(saved.deletedStockInwardIds ?? []),
@@ -450,6 +472,15 @@ export const useAppStore = create<AppState>()(
         const migratedUserOverrides = migrateUserPermissionOverrides(
           state.userPermissionOverrides
         );
+
+        if (fromVersion === 53) {
+          return {
+            ...state,
+            challans: [],
+            rolePermissions: migratedRolePermissions,
+            userPermissionOverrides: migratedUserOverrides,
+          };
+        }
 
         if (fromVersion === 52) {
           return {

@@ -20,6 +20,7 @@ import { syncListCache } from "@/lib/list-cache-sync";
 import { mergeProfiles } from "@/lib/profile";
 import { getPurchaseOrderTotalWeight, resolvePurchaseOrderItemWeight } from "@/lib/purchase-order-form";
 import { showDeletedToast } from "@/lib/toast";
+import { alertSyncFailure } from "@/lib/sync-alert";
 import {
   createPurchaseOrderApi,
   deletePurchaseOrderApi,
@@ -210,6 +211,9 @@ export default function PurchaseOrdersPage() {
 
   const handleUpdate = useCallback(
     async (order: PurchaseOrder) => {
+      const previous = (useAppStore.getState().purchaseOrders ?? []).find(
+        (entry) => entry.id === order.id
+      );
       replacePurchaseOrder(order);
       const nextOrders = useAppStore.getState().purchaseOrders ?? [];
       syncListCache("/api/purchase-orders", "purchaseOrders", nextOrders);
@@ -217,7 +221,13 @@ export default function PurchaseOrdersPage() {
 
       const saved = await updatePurchaseOrderApi(order);
       if (!saved) {
-        alert("Could not update purchase order. Please check that the backend is running.");
+        if (previous) {
+          replacePurchaseOrder(previous);
+        }
+        const restored = useAppStore.getState().purchaseOrders ?? [];
+        syncListCache("/api/purchase-orders", "purchaseOrders", restored);
+        setApiOrders(mergePurchaseOrders(apiOrders, restored));
+        alertSyncFailure("Could not update purchase order on the server.");
         return;
       }
       replacePurchaseOrder(saved);
