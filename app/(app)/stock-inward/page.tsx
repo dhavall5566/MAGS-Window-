@@ -29,6 +29,7 @@ import {
 } from "@/lib/stock-inward-api";
 import { syncStockInwardFromStore } from "@/lib/list-cache-sync";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { formatNos } from "@/lib/stock-inward-calculations";
 import { useActiveStockInward } from "@/hooks/use-stock-derived-data";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
@@ -403,7 +404,7 @@ function StockInwardPageContent() {
         header: "NOS",
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
-        render: (row: StockInward) => formatNumber(row.quantity ?? 0, 2),
+        render: (row: StockInward) => formatNos(row.quantity ?? 0),
       },
       {
         key: "totalWeightKg",

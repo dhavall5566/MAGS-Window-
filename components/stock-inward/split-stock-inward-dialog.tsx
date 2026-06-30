@@ -23,6 +23,7 @@ import {
   validateStockInwardSplit,
 } from "@/lib/stock-inward-split";
 import { normalizeStockLength } from "@/lib/stock-master";
+import { formatNos } from "@/lib/stock-inward-calculations";
 import { formatNumber, generateId } from "@/lib/utils";
 import { showSavedToast } from "@/lib/toast";
 import type { Profile, StockInward } from "@/types";
@@ -223,7 +224,7 @@ export function SplitStockInwardDialog({
           </div>
           <div>
             <p className="text-xs text-muted-foreground">NOS</p>
-            <p className="text-sm tabular-nums">{formatNumber(parentQty, 2)}</p>
+            <p className="text-sm tabular-nums">{formatNos(parentQty)}</p>
           </div>
         </div>
 

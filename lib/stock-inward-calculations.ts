@@ -87,7 +87,19 @@ export function calculateTotalProfiles(
 ): number {
   const perUnitWeight = calculatePerProfileWeightKg(lengthInMeter, kgPerMeter);
   if (!totalWeightKg || !perUnitWeight) return 0;
-  return Math.round((totalWeightKg / perUnitWeight) * 100) / 100;
+  return roundNos(totalWeightKg / perUnitWeight);
+}
+
+/** Round NOS to the nearest whole number (e.g. 21.98 → 22). */
+export function roundNos(value: number): number {
+  if (!value || Number.isNaN(value)) return 0;
+  return Math.round(value);
+}
+
+/** Format NOS for display with no decimal places. */
+export function formatNos(value: number | undefined | null): string {
+  if (value == null || Number.isNaN(value)) return "0";
+  return formatNumber(roundNos(value), 0);
 }
 
 /** Total weight (kg) = length (m) × NOS × KG/MTR. */
@@ -115,9 +127,10 @@ export function syncStockInwardFromProfiles(
   lengthInMeter: number,
   kgPerMeter: number
 ): { totalWeightKg: number; totalProfiles: number } {
+  const roundedProfiles = roundNos(totalProfiles);
   return {
-    totalProfiles,
-    totalWeightKg: calculateTotalWeightKg(totalProfiles, lengthInMeter, kgPerMeter),
+    totalProfiles: roundedProfiles,
+    totalWeightKg: calculateTotalWeightKg(roundedProfiles, lengthInMeter, kgPerMeter),
   };
 }
 
@@ -172,9 +185,10 @@ export function normalizeStockInwardRecord(entry: StockInward): StockInward {
       : undefined;
   const lengthInMeter = Number(entry.length) || 0;
   const kgPerMeter = entry.kgPerMeter ?? STOCK_INWARD_KG_PER_METER;
-  const quantity =
+  const quantity = roundNos(
     entry.quantity ??
-    calculateTotalProfiles(totalWeightKg, lengthInMeter, kgPerMeter);
+      calculateTotalProfiles(totalWeightKg, lengthInMeter, kgPerMeter)
+  );
 
   const normalized: StockInward = {
     ...entry,

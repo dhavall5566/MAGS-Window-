@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DEFAULT_DASHBOARD_TIMEFRAME } from "@/lib/dashboard-timeframe";
 import { useDashboardLiveStats } from "@/hooks/use-dashboard-live-data";
 import { normalizeStockInwardRecord } from "@/lib/stock-inward-calculations";
+import { formatNos } from "@/lib/stock-inward-calculations";
 import { formatNumber } from "@/lib/utils";
 import { useCachedOrStoreList } from "@/hooks/use-seeded-list-state";
 import { useAppStore } from "@/lib/store";
@@ -89,7 +90,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Available Stock"
-          value={formatNumber(stats.availableStock ?? 0)}
+          value={formatNos(stats.availableStock ?? 0)}
           subtitle="Total pieces in inventory"
           icon={Package}
           variant="success"

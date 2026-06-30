@@ -12,6 +12,7 @@ import { useProfileCodeFilters } from "@/components/shared/profile-code-filters"
 import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
 import {
   calculateTotalProfiles,
+  formatNos,
   formatStockLength,
   STOCK_INWARD_KG_PER_METER,
 } from "@/lib/stock-inward-calculations";
@@ -159,9 +160,8 @@ export default function ConsumptionPage() {
         render: (row: Consumption) => {
           const totalWeightKg = Math.abs(row.weight ?? 0);
           const length = row.length ?? 0;
-          return formatNumber(
-            calculateTotalProfiles(totalWeightKg, length, STOCK_INWARD_KG_PER_METER),
-            2
+          return formatNos(
+            calculateTotalProfiles(totalWeightKg, length, STOCK_INWARD_KG_PER_METER)
           );
         },
       },

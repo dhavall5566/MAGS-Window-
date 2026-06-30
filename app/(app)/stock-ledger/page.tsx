@@ -11,7 +11,7 @@ import {
 import { useProfileCodeFilters } from "@/components/shared/profile-code-filters";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatStockLength } from "@/lib/stock-inward-calculations";
+import { formatStockLength, formatNos } from "@/lib/stock-inward-calculations";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { useStockLedgerRows } from "@/hooks/use-stock-derived-data";
 import type { StockLedgerEntry } from "@/types";
@@ -175,7 +175,7 @@ export default function StockLedgerPage() {
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
         render: (row: StockLedgerEntry) =>
-          row.totalProfiles ? formatNumber(row.totalProfiles, 2) : "—",
+          row.totalProfiles ? formatNos(row.totalProfiles) : "—",
       },
       {
         key: "balance",

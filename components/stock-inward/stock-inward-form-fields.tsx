@@ -17,6 +17,7 @@ import {
 import { SearchableSelect, stringSelectOptions } from "@/components/ui/searchable-select";
 import {
   findProfilesByDyeCode,
+  formatNos,
   formatStockLength,
   getStockInwardKgPerMeter,
   NOS_FORMULA,
@@ -64,7 +65,7 @@ function TotalProfilesHelp({
       <>
         <p>{NOS_FORMULA}</p>
         <p className="mt-1.5 text-muted-foreground">
-          {formatStockLength(lengthInMeter)} × {formatNumber(totalProfiles, 2)} ×{" "}
+          {formatStockLength(lengthInMeter)} × {formatNos(totalProfiles)} ×{" "}
           {formatNumber(kgPerMeter, 3)} = {formatNumber(totalWeightKg, 2)} kg
         </p>
       </>

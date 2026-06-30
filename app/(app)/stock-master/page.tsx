@@ -8,6 +8,7 @@ import { useProfileCodeFilters } from "@/components/shared/profile-code-filters"
 import { Badge } from "@/components/ui/badge";
 import { formatStockLength } from "@/lib/stock-inward-calculations";
 import { formatNumber } from "@/lib/utils";
+import { formatNos } from "@/lib/stock-inward-calculations";
 import { useStockMasterRows } from "@/hooks/use-stock-derived-data";
 import { useAppStore } from "@/lib/store";
 
@@ -111,7 +112,7 @@ export default function StockMasterPage() {
         className: "whitespace-nowrap tabular-nums",
         align: "center" as const,
         render: (row: (typeof rows)[number]) =>
-          row.totalProfiles ? formatNumber(row.totalProfiles, 2) : "—",
+          row.totalProfiles ? formatNos(row.totalProfiles) : "—",
       },
     ],
     [highlightLowStock, isLowStock]
