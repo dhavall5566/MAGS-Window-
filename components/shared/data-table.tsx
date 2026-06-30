@@ -93,6 +93,8 @@ interface DataTableProps<T extends object> {
   pagination?: boolean;
   /** Initial rows per page when pagination is enabled. Default: 25 */
   defaultPageSize?: number;
+  /** Pre-fill the search box (e.g. from ?q= URL param). */
+  initialSearchQuery?: string;
   serialHeader?: string;
 }
 
@@ -196,10 +198,12 @@ export function DataTable<T extends object>({
   showSerialNumber = true,
   pagination = true,
   defaultPageSize = DEFAULT_PAGE_SIZE,
+  initialSearchQuery = "",
   serialHeader = "Sr. No.",
 }: DataTableProps<T>) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearchQuery);
   const debouncedSearch = useDebouncedValue(search, 250);
+  const [isMounted, setIsMounted] = useState(false);
   const [sort, setSort] = useState<{ key: string; direction: SortDirection } | null>(
     null
   );
@@ -257,6 +261,16 @@ export function DataTable<T extends object>({
     setPageSize(loadPageSize(tableId) || defaultPageSize);
     setColumnsReady(true);
   }, [tableId, hideableKeys, defaultColumnOrder, defaultPageSize, hideableKeysKey, defaultColumnOrderKey]);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (initialSearchQuery) {
+      setSearch(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
 
   useEffect(() => {
     setPage(1);
@@ -342,12 +356,15 @@ export function DataTable<T extends object>({
   const resetColumnOrder = () => setColumnOrder(defaultColumnOrder);
 
   useEffect(() => {
+    if (!isMounted) return;
     const query = new URLSearchParams(window.location.search).get("q");
     if (query) setSearch(query);
-  }, []);
+  }, [isMounted]);
+
+  const tableData = isMounted ? (data ?? []) : [];
 
   const filtered = useMemo(() => {
-    const rows = data ?? [];
+    const rows = tableData;
     if (!debouncedSearch) return rows;
     if (searchFilter) {
       return rows.filter((row) => searchFilter(row, debouncedSearch));
@@ -359,7 +376,7 @@ export function DataTable<T extends object>({
         .toLowerCase()
         .includes(q)
     );
-  }, [data, debouncedSearch, searchKey, searchFilter]);
+  }, [tableData, debouncedSearch, searchKey, searchFilter]);
 
   const sorted = useMemo(() => {
     if (!sort) return filtered;
@@ -491,9 +508,9 @@ export function DataTable<T extends object>({
             {filterContent}
             {showResultCount && (
               <span className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
-                {isLoading
+                {!isMounted || isLoading
                   ? "Loading…"
-                  : `${sorted.length} of ${(data ?? []).length} records`}
+                  : `${sorted.length} of ${tableData.length} records`}
               </span>
             )}
           </div>
@@ -671,7 +688,7 @@ export function DataTable<T extends object>({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {isLoading || !isMounted ? (
               <TableRow>
                 <TableCell
                   colSpan={visibleColumns.length}
@@ -742,7 +759,7 @@ export function DataTable<T extends object>({
         </Table>
         </div>
       </CardContent>
-      {pagination && sorted.length > 0 && (
+      {pagination && isMounted && sorted.length > 0 && (
         <div className="flex flex-col gap-3 border-t bg-muted/20 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
             Showing{" "}

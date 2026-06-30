@@ -3,19 +3,11 @@
 import { useTheme } from "next-themes";
 import {
   Menu,
-  Bell,
   Sun,
   Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import type { User as AppUser } from "@/types";
 
@@ -28,8 +20,6 @@ interface HeaderProps {
 
 export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: HeaderProps) {
   const { theme, setTheme } = useTheme();
-  const notifications: never[] = [];
-  const unreadCount = notifications.length;
 
   return (
     <header
@@ -62,25 +52,7 @@ export function Header({ user, menuButtonRef, sidebarOpen, onMenuClick }: Header
           <span className="sr-only">Toggle theme</span>
         </Button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-              <Bell className="h-4 w-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-              No notifications
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <NotificationsMenu />
 
         <UserAccountMenu user={user} />
       </div>

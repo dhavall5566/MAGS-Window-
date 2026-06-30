@@ -4,6 +4,25 @@ import type { Vendor } from "@/types";
 
 const LIST_URL = "/api/vendors";
 
+export type DeleteVendorResult =
+  | { ok: true }
+  | { ok: false; error: string; status?: number };
+
+async function readApiErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await res.json()) as { detail?: string | Array<{ msg?: string }> };
+    if (typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail;
+    }
+    if (Array.isArray(data.detail) && data.detail[0]?.msg) {
+      return data.detail[0].msg;
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return fallback;
+}
+
 export async function fetchVendorsApi(): Promise<Vendor[]> {
   const data = await fetchJson<{ vendors?: Vendor[] }>(LIST_URL, { vendors: [] });
   return (data.vendors ?? []).map(normalizeVendor);
@@ -44,14 +63,19 @@ export async function updateVendorApi(
   }
 }
 
-export async function deleteVendorApi(id: string): Promise<boolean> {
+export async function deleteVendorApi(id: string): Promise<DeleteVendorResult> {
   try {
     const res = await fetch(`${LIST_URL}/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
     invalidateJsonCache(LIST_URL);
-    return res.ok;
+    if (res.ok) return { ok: true };
+    const error = await readApiErrorMessage(res, "Could not delete vendor.");
+    return { ok: false, error, status: res.status };
   } catch {
-    return false;
+    return {
+      ok: false,
+      error: "Could not delete vendor. Please check that the backend is running.",
+    };
   }
 }

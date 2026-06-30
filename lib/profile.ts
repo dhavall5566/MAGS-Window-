@@ -532,8 +532,8 @@ export function getProfileRmmValue(
   return Math.round(length * RMM_TO_METER_FACTOR * 100) / 100;
 }
 
-/** Multiplier for powder coating challan rate: (RMM / 305) × Rate × 3.24 */
-export const POWDER_COATING_RATE_MULTIPLIER = 3.24;
+/** Multiplier for powder coating challan rate: (RMM / 305) × Rate × 3.28 */
+export const POWDER_COATING_RATE_MULTIPLIER = 3.28;
 
 export const POWDER_COATING_RMTR_RATE_LABEL = "R MTR RATE";
 
@@ -543,7 +543,7 @@ export const POWDER_COATING_RMM_FORMULA =
   "RMM is stored on each profile in Profile Master";
 
 export const POWDER_COATING_RATE_FORMULA =
-  "R MTR RATE = (RMM / 305) × Profile KG/MTR × 3.24";
+  "R MTR RATE = (RMM / 305) × Profile KG/MTR × 3.28";
 
 export const POWDER_COATING_AMOUNT_FORMULA =
   "Amount = Length × Qty × R MTR RATE";
@@ -600,7 +600,7 @@ export function getProfilePowderCoatingRmm(
   return getProfilePowderCoatingRmmValue(profile);
 }
 
-/** Powder coating R MTR RATE = (RMM / 305) × Rate × 3.24 */
+/** Powder coating R MTR RATE = (RMM / 305) × Rate × 3.28 */
 export function calculatePowderCoatingRateFromRmmAndRate(
   rmm: number,
   formulaRate: number

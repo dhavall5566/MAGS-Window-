@@ -12,6 +12,7 @@ export const APP_API_PATHS = [
   "/api/users",
   "/api/app-settings",
   "/api/reports",
+  "/api/notifications",
 ] as const;
 
 export function prefetchAppData(): void {

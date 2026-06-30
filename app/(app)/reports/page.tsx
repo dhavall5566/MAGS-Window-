@@ -20,6 +20,7 @@ import { useModuleCrud } from "@/hooks/use-module-crud";
 import { useReportsAnalytics } from "@/hooks/use-reports-analytics";
 import { createReportRecordApi, deleteReportRecordApi } from "@/lib/app-settings-api";
 import { alertSyncFailure } from "@/lib/sync-alert";
+import { notifyReportGenerated } from "@/lib/notifications/event-notifications";
 import type { Report } from "@/types";
 
 const ReportChartPanel = dynamic(
@@ -51,7 +52,9 @@ export default function ReportsPage() {
       if (!saved) {
         deleteReport(report.id);
         alertSyncFailure("Report was saved locally but could not be synced to the server.");
+        return;
       }
+      notifyReportGenerated(report);
     },
     [addReport, deleteReport]
   );

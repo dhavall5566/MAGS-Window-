@@ -43,6 +43,7 @@ interface AppState {
   settings: AppSettings;
   rolePermissions: ModuleRolePermissions;
   userPermissionOverrides: UserCrudOverrides;
+  dismissedLiveAlertKeys: string[];
   setProfiles: (profiles: Profile[]) => void;
   addProfile: (profile: Profile) => void;
   updateProfile: (id: string, updates: Partial<Profile>) => void;
@@ -92,6 +93,7 @@ interface AppState {
   setRolePermissions: (permissions: ModuleRolePermissions) => void;
   setUserPermissionOverrides: (overrides: UserCrudOverrides) => void;
   resetRolePermissions: () => void;
+  dismissLiveAlert: (key: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -114,6 +116,7 @@ export const useAppStore = create<AppState>()(
       settings: DEFAULT_APP_SETTINGS,
       rolePermissions: normalizeModuleRolePermissions(DEFAULT_ROLE_PERMISSIONS),
       userPermissionOverrides: {},
+      dismissedLiveAlertKeys: [],
       setProfiles: (profiles) => set({ profiles }),
       addProfile: (profile) => {
         set((s) => ({
@@ -373,10 +376,16 @@ export const useAppStore = create<AppState>()(
         set({ userPermissionOverrides: overrides }),
       resetRolePermissions: () =>
         set({ rolePermissions: normalizeModuleRolePermissions(DEFAULT_ROLE_PERMISSIONS) }),
+      dismissLiveAlert: (key) =>
+        set((state) => {
+          const current = state.dismissedLiveAlertKeys ?? [];
+          if (current.includes(key)) return state;
+          return { dismissedLiveAlertKeys: [...current, key] };
+        }),
     }),
     {
       name: "mags-app-store",
-      version: 55,
+      version: 56,
       skipHydration: true,
       partialize: (state) => ({
         navOrder: state.navOrder,
@@ -384,6 +393,7 @@ export const useAppStore = create<AppState>()(
         settings: state.settings,
         rolePermissions: state.rolePermissions,
         userPermissionOverrides: state.userPermissionOverrides,
+        dismissedLiveAlertKeys: state.dismissedLiveAlertKeys,
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<AppState>;
@@ -405,6 +415,8 @@ export const useAppStore = create<AppState>()(
           userPermissionOverrides: migrateUserPermissionOverrides(
             saved.userPermissionOverrides ?? current.userPermissionOverrides
           ),
+          dismissedLiveAlertKeys:
+            saved.dismissedLiveAlertKeys ?? current.dismissedLiveAlertKeys ?? [],
         };
       },
       migrate: (persisted, fromVersion) => {
@@ -423,6 +435,15 @@ export const useAppStore = create<AppState>()(
           state.userPermissionOverrides
         );
 
+        if (fromVersion === 55) {
+          return {
+            ...state,
+            dismissedLiveAlertKeys: state.dismissedLiveAlertKeys ?? [],
+            rolePermissions: migratedRolePermissions,
+            userPermissionOverrides: migratedUserOverrides,
+          };
+        }
+
         if (fromVersion === 54) {
           return {
             ...state,
@@ -438,6 +459,7 @@ export const useAppStore = create<AppState>()(
             reports: [],
             vendors: prepareVendorList(mockVendors.map(normalizeVendor)),
             users: mockUsers,
+            dismissedLiveAlertKeys: [],
             rolePermissions: migratedRolePermissions,
             userPermissionOverrides: migratedUserOverrides,
           };
@@ -447,6 +469,7 @@ export const useAppStore = create<AppState>()(
           return {
             ...state,
             challans: [],
+            dismissedLiveAlertKeys: state.dismissedLiveAlertKeys ?? [],
             rolePermissions: migratedRolePermissions,
             userPermissionOverrides: migratedUserOverrides,
           };
@@ -456,6 +479,7 @@ export const useAppStore = create<AppState>()(
           return {
             ...state,
             vendors: mergeVendorLists([], state.vendors ?? []),
+            dismissedLiveAlertKeys: state.dismissedLiveAlertKeys ?? [],
             rolePermissions: migratedRolePermissions,
             userPermissionOverrides: migratedUserOverrides,
           };
@@ -491,6 +515,7 @@ export const useAppStore = create<AppState>()(
             },
             rolePermissions: migratedRolePermissions,
             userPermissionOverrides: migratedUserOverrides,
+            dismissedLiveAlertKeys: state.dismissedLiveAlertKeys ?? [],
           };
         }
 
@@ -524,6 +549,7 @@ export const useAppStore = create<AppState>()(
             },
             rolePermissions: migratedRolePermissions,
             userPermissionOverrides: migratedUserOverrides,
+            dismissedLiveAlertKeys: state.dismissedLiveAlertKeys ?? [],
           };
         }
 
@@ -597,6 +623,7 @@ export const useAppStore = create<AppState>()(
           purchaseOrders: clearedInventory ? [] : (rest.purchaseOrders ?? []),
           rolePermissions: migratedRolePermissions,
           userPermissionOverrides: migratedUserOverrides,
+          dismissedLiveAlertKeys: rest.dismissedLiveAlertKeys ?? [],
         };
       },
     }

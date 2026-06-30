@@ -19,6 +19,10 @@ import { alertSyncFailure } from "@/lib/sync-alert";
 import { useAppStore } from "@/lib/store";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { formatPartyAddress, getVendorTypeLabel } from "@/lib/vendor";
+import {
+  getVendorDeleteAssociations,
+  type VendorAssociationGroup,
+} from "@/lib/vendor-associations";
 import type { Vendor, VendorType } from "@/types";
 
 const AddVendorDialog = dynamic(
@@ -28,6 +32,14 @@ const AddVendorDialog = dynamic(
 
 const EditVendorDialog = dynamic(
   () => import("@/components/vendors/edit-vendor-dialog").then((m) => m.EditVendorDialog),
+  { ssr: false }
+);
+
+const VendorDeleteBlockedDialog = dynamic(
+  () =>
+    import("@/components/vendors/vendor-delete-blocked-dialog").then(
+      (m) => m.VendorDeleteBlockedDialog
+    ),
   { ssr: false }
 );
 
@@ -42,6 +54,11 @@ export default function VendorsPage() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<VendorTypeFilter>("all");
+  const [deleteBlocked, setDeleteBlocked] = useState<{
+    vendorName: string;
+    associations: VendorAssociationGroup[];
+    fallbackMessage?: string;
+  } | null>(null);
 
   const storeVendors = useAppStore((s) => s.vendors);
   const vendors = storeVendors ?? [];
@@ -102,15 +119,38 @@ export default function VendorsPage() {
 
   const handleDelete = useCallback(
     async (vendor: Vendor) => {
+      const state = useAppStore.getState();
+      const associations = getVendorDeleteAssociations(vendor, {
+        stockInward: state.stockInward,
+        purchaseOrders: state.purchaseOrders,
+        challans: state.challans,
+        powderCoating: state.powderCoating,
+      });
+      if (associations.length > 0) {
+        setDeleteBlocked({
+          vendorName: vendor.partyName,
+          associations,
+        });
+        return;
+      }
+
       if (!confirm(`Delete vendor ${vendor.partyName}?`)) return;
 
       deleteVendor(vendor.id);
       syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
-      const ok = await deleteVendorApi(vendor.id);
-      if (!ok) {
+      const result = await deleteVendorApi(vendor.id);
+      if (!result.ok) {
         upsertVendor(vendor);
         syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
-        alert("Could not delete vendor from the server. It was restored locally.");
+        if (result.status === 409) {
+          setDeleteBlocked({
+            vendorName: vendor.partyName,
+            associations: [],
+            fallbackMessage: result.error,
+          });
+        } else {
+          alert(result.error);
+        }
         return;
       }
       showDeletedToast("Vendor");
@@ -270,6 +310,15 @@ export default function VendorsPage() {
           if (!next) setEditingVendor(null);
         }}
         onSave={handleUpdateVendor}
+      />
+      <VendorDeleteBlockedDialog
+        open={deleteBlocked != null}
+        onOpenChange={(next) => {
+          if (!next) setDeleteBlocked(null);
+        }}
+        vendorName={deleteBlocked?.vendorName ?? ""}
+        associations={deleteBlocked?.associations ?? []}
+        fallbackMessage={deleteBlocked?.fallbackMessage}
       />
     </div>
   );

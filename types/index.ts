@@ -354,11 +354,26 @@ export interface DashboardTransaction {
   weight?: number;
 }
 
+export type NotificationSource = "live" | "event";
+
+export type NotificationCategory =
+  | "stock_low"
+  | "stock_out"
+  | "challan"
+  | "sync"
+  | "report"
+  | "stock_inward"
+  | "general";
+
 export interface Notification {
   id: string;
   title: string;
   message: string;
-  type: "info" | "warning" | "success";
+  type: "info" | "warning" | "success" | "error";
+  source: NotificationSource;
+  category?: NotificationCategory;
+  href?: string;
+  entityId?: string;
   read: boolean;
   createdAt: string;
 }

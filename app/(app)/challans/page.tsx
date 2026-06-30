@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
@@ -25,6 +26,7 @@ import { appendChallanIfMissing } from "@/lib/challan-consumption";
 import { createChallanApi, deleteChallanApi, updateChallanApi } from "@/lib/challan-api";
 import { syncChallansFromStore, syncChallansList } from "@/lib/list-cache-sync";
 import { alertSyncFailure } from "@/lib/sync-alert";
+import { notifyChallanSaved } from "@/lib/notifications/event-notifications";
 import {
   calculatePowderCoatingItemAmount,
   findProfileByCode,
@@ -39,6 +41,7 @@ import {
 import { getOutwardChallanProjectName, sumChallanItemQuantities, sumChallanItemWeights } from "@/lib/challan-outward";
 import { enrichChallanVendorDetails } from "@/lib/vendor";
 import { useAppStore } from "@/lib/store";
+import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import { useShallow } from "zustand/react/shallow";
 import type { Challan, ChallanItem, PowderCoatingChallan, Profile } from "@/types";
 
@@ -264,6 +267,7 @@ export default function ChallansPage() {
     }))
   );
   const [activeTab, setActiveTab] = useState("all");
+  const searchParams = useSearchParams();
   const [seriesFilter, setSeriesFilter] = useState("");
   const [codeFilter, setCodeFilter] = useState("");
   const {
@@ -276,6 +280,31 @@ export default function ChallansPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [viewChallan, setViewChallan] = useState<Challan | null>(null);
   const [, startTabTransition] = useTransition();
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "outward" || tab === "powder_coating" || tab === "all") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleOpenLinkedChallan = useCallback((challan: Challan) => {
+    setViewChallan(challan);
+  }, []);
+
+  const handleBeforeOpenLinkedChallan = useCallback((challan: Challan) => {
+    if (challan.type === "outward" || challan.type === "powder_coating") {
+      setActiveTab(challan.type);
+    } else {
+      setActiveTab("all");
+    }
+  }, []);
+
+  const initialSearchQuery = useRecordDeepLink(
+    challans,
+    handleOpenLinkedChallan,
+    handleBeforeOpenLinkedChallan
+  );
 
   const handleCreate = useCallback((challan: Challan) => {
     const currentChallans = useAppStore.getState().challans ?? [];
@@ -293,6 +322,7 @@ export default function ChallansPage() {
       }
       replaceChallan(saved);
       syncChallansFromStore();
+      notifyChallanSaved(saved);
     });
   }, [replaceChallan]);
 
@@ -313,6 +343,7 @@ export default function ChallansPage() {
       }
       replaceChallan(saved);
       syncChallansFromStore();
+      notifyChallanSaved(saved);
     });
   }, [replaceChallan]);
 
@@ -626,6 +657,7 @@ export default function ChallansPage() {
             columns={columns}
             searchFilter={handleChallanSearch}
             searchPlaceholder="Search challan, vendor, or profile code..."
+            initialSearchQuery={initialSearchQuery}
             filterContent={tableFilters}
             filtersActive={Boolean(seriesFilter || codeFilter || dateFiltersActive)}
             onClearFilters={handleClearFilters}

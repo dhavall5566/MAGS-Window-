@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
+import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import {
   combineTableFilters,
   useDateRangeFilter,
@@ -30,6 +31,7 @@ import { useActiveStockInward } from "@/hooks/use-stock-derived-data";
 import { useModuleCrud } from "@/hooks/use-module-crud";
 import { showAddedToast, showDeletedToast, showSavedToast } from "@/lib/toast";
 import { alertSyncFailure } from "@/lib/sync-alert";
+import { notifyStockInwardSaved } from "@/lib/notifications/event-notifications";
 import { useAppStore } from "@/lib/store";
 import { useShallow } from "zustand/react/shallow";
 import type { StockInward } from "@/types";
@@ -135,6 +137,7 @@ export default function StockInwardPage() {
       showAddedToast(
         saved.length > 1 ? `${saved.length} stock inward entries` : "Stock inward"
       );
+      notifyStockInwardSaved(saved.length);
     },
     [addStockInward, upsertStockInward, revertStockInwardAdds]
   );
@@ -185,6 +188,8 @@ export default function StockInwardPage() {
     setEditingEntry(row);
     setEditOpen(true);
   }, []);
+
+  const initialSearchQuery = useRecordDeepLink(inward, handleEdit);
 
   const handleUpdateStock = useCallback(
     async (entries: StockInward[]) => {
@@ -434,6 +439,7 @@ export default function StockInwardPage() {
         columns={columns}
         searchFilter={handleSearch}
         searchPlaceholder="Search inward no, invoice, die code, profile, or supplier..."
+        initialSearchQuery={initialSearchQuery}
         filterContent={combineTableFilters(filterContent, dateFilterContent)}
         filtersActive={filtersActive || dateFiltersActive}
         onClearFilters={handleClearAllFilters}

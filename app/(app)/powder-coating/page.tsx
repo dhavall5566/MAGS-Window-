@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
+import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import {
   combineTableFilters,
   useDateRangeFilter,
@@ -100,6 +101,8 @@ export default function PowderCoatingPage() {
     setEditingEntry(entry);
     setEditOpen(true);
   }, []);
+
+  const initialSearchQuery = useRecordDeepLink(data ?? [], handleEdit);
 
   const handleDelete = useCallback(
     async (entry: PowderCoating) => {
@@ -288,6 +291,7 @@ export default function PowderCoatingPage() {
         tableId="powder-coating"
         data={filteredData}
         columns={columns}
+        initialSearchQuery={initialSearchQuery}
         searchFilter={handlePowderCoatingSearch}
         searchPlaceholder="Search batch, profile code, name, or vendor..."
         filterContent={combineTableFilters(filterContent, dateFilterContent)}

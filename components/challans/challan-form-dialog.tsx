@@ -39,6 +39,7 @@ import {
   POWDER_COATING_RMTR_RATE_LABEL,
   POWDER_COATING_RMM_FORMULA,
   POWDER_COATING_RATE_FORMULA,
+  POWDER_COATING_RATE_MULTIPLIER,
   weightFromConversionUnit,
 } from "@/lib/profile";
 import {
@@ -54,10 +55,11 @@ import {
 import { buildOutwardConsumptionFromChallans } from "@/lib/challan-consumption";
 import {
   findFirstOutwardStockIssue,
-  formatSplitLengthOption,
-  getOutwardChallanSplitLengthOptions,
+  formatOutwardLengthOption,
+  getOutwardChallanLengthOptions,
   getOutwardLineStockIssue,
   hasOutwardStockIssues,
+  OUTWARD_STOCK_UNAVAILABLE_MESSAGE,
   resolveOutwardChallanItemLength,
 } from "@/lib/outward-challan-stock-lengths";
 import {
@@ -155,7 +157,7 @@ function defaultItem(
     profileCode: "",
     profileName: "",
     profileImage: "",
-    length,
+    length: type === "outward" ? 0 : length,
     qty: 1,
     weight: 0,
     ...(type === "powder_coating" ? { rate: 0 } : {}),
@@ -221,7 +223,8 @@ function PowderCoatingRateHelp({
         <p className="mt-1.5 text-muted-foreground">RMM = {formatNumber(rmm, 2)}</p>
         <p className="mt-2">{POWDER_COATING_RATE_FORMULA}</p>
         <p className="mt-1.5 text-muted-foreground">
-          ({formatNumber(rmm, 2)} / 305) × {formatNumber(formulaRate, 4)} × 3.24 ={" "}
+          ({formatNumber(rmm, 2)} / 305) × {formatNumber(formulaRate, 4)} ×{" "}
+          {POWDER_COATING_RATE_MULTIPLIER} ={" "}
           {formatNumber(rmtrRate, 2)}
         </p>
       </>
@@ -1103,21 +1106,18 @@ export function ChallanFormDialog({
               const itemProfile = findProfileByCode(profiles, itemProfileCode);
               const itemLength = form.watch(`items.${index}.length`);
               const itemQty = form.watch(`items.${index}.qty`);
-              const splitLengthOptions =
+              const lengthOptions =
                 type === "outward" && itemProfileCode
-                  ? getOutwardChallanSplitLengthOptions(
+                  ? getOutwardChallanLengthOptions(
                       itemProfileCode,
                       itemProfileName,
                       mergedInward,
                       stockConsumption,
-                      Number(itemLength) || 0,
-                      (watchedItems ?? [])
-                        .filter((_, rowIndex) => rowIndex !== index)
-                        .filter((item) => item.profileCode === itemProfileCode)
-                        .map((item) => Number(item.length) || 0)
+                      Number(itemLength) || 0
                     )
                   : [];
-              const useSplitLengthDropdown = splitLengthOptions.length > 0;
+              const profileHasNoStock =
+                type === "outward" && Boolean(itemProfileCode) && lengthOptions.length === 0;
               const normalizedItemLength = normalizeStockLength(Number(itemLength) || 0);
               const itemWeight = itemProfile
                 ? resolveChallanItemWeight(
@@ -1142,23 +1142,26 @@ export function ChallanFormDialog({
               const itemLengthFeet = metersToFeet(normalizedItemLength);
               const outwardStockIssue =
                 type === "outward" && itemProfileCode
-                  ? getOutwardLineStockIssue(
-                      {
-                        profileCode: itemProfileCode,
-                        profileName: itemProfileName,
-                        length: Number(itemLength) || 0,
-                        qty: Number(itemQty) || 0,
-                      },
-                      (watchedItems ?? []).map((item) => ({
-                        profileCode: item.profileCode,
-                        profileName: item.profileName,
-                        length: Number(item.length) || 0,
-                        qty: Number(item.qty) || 0,
-                      })),
-                      mergedInward,
-                      stockConsumption
-                    )
+                  ? profileHasNoStock
+                    ? OUTWARD_STOCK_UNAVAILABLE_MESSAGE
+                    : getOutwardLineStockIssue(
+                        {
+                          profileCode: itemProfileCode,
+                          profileName: itemProfileName,
+                          length: Number(itemLength) || 0,
+                          qty: Number(itemQty) || 0,
+                        },
+                        (watchedItems ?? []).map((item) => ({
+                          profileCode: item.profileCode,
+                          profileName: item.profileName,
+                          length: Number(item.length) || 0,
+                          qty: Number(item.qty) || 0,
+                        })),
+                        mergedInward,
+                        stockConsumption
+                      )
                   : null;
+              const outwardLineInputsDisabled = Boolean(outwardStockIssue);
 
               return (
               <div
@@ -1257,43 +1260,38 @@ export function ChallanFormDialog({
                   <>
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label className="text-xs">Length (m)</Label>
-                      {useSplitLengthDropdown ? (
-                        <SearchableSelect
-                          className="w-full"
-                          searchable={false}
-                          value={
-                            normalizedItemLength > 0 ? String(normalizedItemLength) : ""
-                          }
-                          onValueChange={(value) => {
-                            form.setValue(`items.${index}.length`, Number(value) || 0, {
-                              shouldValidate: true,
-                            });
-                            updateItemWeight(index);
-                          }}
-                          options={splitLengthOptions.map((length) => ({
-                            value: String(length),
-                            label: formatSplitLengthOption(length),
-                          }))}
-                          placeholder="Select length"
-                          emptyText="No split stock remaining"
-                        />
-                      ) : (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-full min-w-0 tabular-nums"
-                          {...form.register(`items.${index}.length`, {
-                            onChange: () => updateItemWeight(index),
-                          })}
-                        />
-                      )}
+                      <SearchableSelect
+                        className="w-full"
+                        searchable={lengthOptions.length > 8}
+                        disabled={!itemProfileCode || outwardLineInputsDisabled}
+                        value={
+                          normalizedItemLength > 0 ? String(normalizedItemLength) : ""
+                        }
+                        onValueChange={(value) => {
+                          form.setValue(`items.${index}.length`, Number(value) || 0, {
+                            shouldValidate: true,
+                          });
+                          updateItemWeight(index);
+                        }}
+                        options={lengthOptions.map((length) => ({
+                          value: String(length),
+                          label: formatOutwardLengthOption(length),
+                        }))}
+                        placeholder={
+                          itemProfileCode ? "Select length" : "Select profile first"
+                        }
+                        emptyText="No stock available"
+                      />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label className="text-xs">Qty</Label>
                       <Input
                         type="number"
-                        className="w-full min-w-0"
+                        disabled={outwardLineInputsDisabled}
+                        className={cn(
+                          "w-full min-w-0",
+                          outwardLineInputsDisabled && "bg-muted"
+                        )}
                         {...form.register(`items.${index}.qty`, {
                           onChange: () => updateItemWeight(index),
                         })}

@@ -68,8 +68,7 @@ export function getOutwardLineStockIssue(
   if (!item.profileCode?.trim()) return null;
 
   const length = Number(item.length) || 0;
-  const qty = Math.max(0, Number(item.qty) || 0);
-  if (!length || !qty) return null;
+  if (!length) return null;
 
   const key = getOutwardStockReservationKey(item.profileCode, item.profileName, length);
   const available = getAvailableOutwardStockQty(
@@ -79,9 +78,16 @@ export function getOutwardLineStockIssue(
     inward,
     consumption
   );
-  const totalRequested = getReservedOutwardQtyForKey(items, key);
 
-  if (available <= 0 || totalRequested > available) {
+  if (available <= 0) {
+    return OUTWARD_STOCK_UNAVAILABLE_MESSAGE;
+  }
+
+  const qty = Math.max(0, Number(item.qty) || 0);
+  if (!qty) return null;
+
+  const totalRequested = getReservedOutwardQtyForKey(items, key);
+  if (totalRequested > available) {
     return OUTWARD_STOCK_UNAVAILABLE_MESSAGE;
   }
 
@@ -138,6 +144,27 @@ export function isSplitProfileStock(
   );
 }
 
+/** All in-stock lengths (m) for a profile from stock inward after consumption. */
+export function getAvailableOutwardStockLengths(
+  profileCode: string,
+  profileName: string | undefined,
+  inward: StockInward[],
+  consumption: Consumption[]
+): number[] {
+  if (!profileCode?.trim()) return [];
+
+  const stockKey = getProfileStockKey({
+    profileCode,
+    profileName: profileName ?? profileCode,
+  });
+
+  const lengths = buildStockMasterRows(inward, consumption)
+    .filter((row) => getProfileStockKey(row) === stockKey && row.stockKg > 0)
+    .map((row) => normalizeStockLength(row.length));
+
+  return [...new Set(lengths.filter((length) => length > 0))].sort((a, b) => a - b);
+}
+
 /** Remaining split piece lengths (m) with stock on hand for outward challan selection. */
 export function getRemainingSplitStockLengths(
   profileCode: string,
@@ -148,22 +175,15 @@ export function getRemainingSplitStockLengths(
   if (!isSplitProfileStock(profileCode, profileName, inward)) {
     return [];
   }
-
-  const stockKey = getProfileStockKey({
-    profileCode,
-    profileName: profileName ?? profileCode,
-  });
-
-  const lengths = buildStockMasterRows(inward, consumption)
-    .filter((row) => getProfileStockKey(row) === stockKey && row.stockKg > 0)
-    .map((row) => row.length);
-
-  return [...new Set(lengths)].sort((a, b) => a - b);
+  return getAvailableOutwardStockLengths(profileCode, profileName, inward, consumption);
 }
 
-export function formatSplitLengthOption(length: number): string {
+export function formatOutwardLengthOption(length: number): string {
   return `${formatStockLength(length)} m`;
 }
+
+/** @deprecated Use formatOutwardLengthOption */
+export const formatSplitLengthOption = formatOutwardLengthOption;
 
 export function resolveOutwardChallanItemLength(
   profileCode: string,
@@ -172,45 +192,54 @@ export function resolveOutwardChallanItemLength(
   consumption: Consumption[],
   fallbackLength: number
 ): number {
-  const splitLengths = getRemainingSplitStockLengths(
+  const available = getAvailableOutwardStockLengths(
     profileCode,
     profileName,
     inward,
     consumption
   );
-  if (splitLengths.length > 0) return splitLengths[0];
-  return fallbackLength;
+  if (available.length === 1) return available[0];
+  if (available.length === 0) return normalizeStockLength(fallbackLength);
+  return 0;
 }
 
-/** Split lengths available for one outward line (excludes other lines on the same profile). */
+/** In-stock lengths available for one outward line item. */
+export function getOutwardChallanLengthOptions(
+  profileCode: string,
+  profileName: string | undefined,
+  inward: StockInward[],
+  consumption: Consumption[],
+  currentLength: number
+): number[] {
+  const available = getAvailableOutwardStockLengths(
+    profileCode,
+    profileName,
+    inward,
+    consumption
+  );
+  const current = normalizeStockLength(currentLength);
+
+  if (current > 0 && !available.includes(current)) {
+    return [...available, current].sort((a, b) => a - b);
+  }
+
+  return available;
+}
+
+/** @deprecated Use getOutwardChallanLengthOptions */
 export function getOutwardChallanSplitLengthOptions(
   profileCode: string,
   profileName: string | undefined,
   inward: StockInward[],
   consumption: Consumption[],
   currentLength: number,
-  reservedLengths: number[] = []
+  _reservedLengths: number[] = []
 ): number[] {
-  const available = getRemainingSplitStockLengths(
+  return getOutwardChallanLengthOptions(
     profileCode,
     profileName,
     inward,
-    consumption
+    consumption,
+    currentLength
   );
-  if (available.length === 0) return [];
-
-  const reserved = new Set(
-    reservedLengths
-      .map((length) => normalizeStockLength(length))
-      .filter((length) => length > 0)
-  );
-  const current = normalizeStockLength(currentLength);
-
-  let options = available.filter((length) => !reserved.has(length));
-
-  if (current > 0 && !options.includes(current)) {
-    options = [...options, current].sort((a, b) => a - b);
-  }
-
-  return options;
 }

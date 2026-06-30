@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import { useDateRangeFilter } from "@/components/shared/date-range-filter";
 import { TableRowActions } from "@/components/shared/table-row-actions";
 import { Button } from "@/components/ui/button";
@@ -291,6 +292,8 @@ export default function PurchaseOrdersPage() {
     setViewOrder(order);
   }, []);
 
+  const initialSearchQuery = useRecordDeepLink(orders, handleView);
+
   const handleEdit = useCallback((order: PurchaseOrder) => {
     setEditingOrder(order);
     setEditOpen(true);
@@ -485,6 +488,7 @@ export default function PurchaseOrdersPage() {
         loadingMessage="Loading purchase orders…"
         searchFilter={handleSearch}
         searchPlaceholder="Search PO number, party, or profile code..."
+        initialSearchQuery={initialSearchQuery}
         emptyMessage="No purchase orders yet. Create one to get started."
         filterContent={dateFilterContent}
         filtersActive={dateFiltersActive}

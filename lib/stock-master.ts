@@ -71,7 +71,8 @@ export function mergeStockInward(
 
 export function buildStockMasterRows(
   inward: StockInward[],
-  consumption: Consumption[] = []
+  consumption: Consumption[] = [],
+  options?: { includeZeroStock?: boolean }
 ): StockMasterRow[] {
   const buckets = new Map<string, StockMasterBucket>();
 
@@ -136,7 +137,7 @@ export function buildStockMasterRows(
         totalProfiles,
       };
     })
-    .filter((row) => row.stockKg > 0)
+    .filter((row) => options?.includeZeroStock || row.stockKg > 0)
     .sort((a, b) => {
       const codeSort = a.profileCode.localeCompare(b.profileCode);
       if (codeSort !== 0) return codeSort;
