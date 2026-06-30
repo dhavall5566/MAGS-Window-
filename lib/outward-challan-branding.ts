@@ -45,6 +45,19 @@ export function findOutwardChallanIssuerById(
   return getOutwardChallanIssuerVendors(vendors).find((vendor) => vendor.id === vendorId);
 }
 
+export function findOutwardChallanIssuerByName(
+  vendors: Vendor[],
+  name: string | undefined
+): Vendor | undefined {
+  if (!name?.trim()) return undefined;
+  const normalized = name.trim().toLowerCase();
+  return getOutwardChallanIssuerVendors(vendors).find((vendor) => {
+    const partyName = vendor.partyName.trim().toLowerCase();
+    const headerName = vendor.challanHeaderName?.trim().toLowerCase() ?? "";
+    return partyName === normalized || headerName === normalized;
+  });
+}
+
 export function getDefaultOutwardChallanVendorId(vendors: Vendor[]): string {
   const issuers = getOutwardChallanIssuerVendors(vendors);
   return (
@@ -166,35 +179,23 @@ function splitVendorAddressForPdf(vendor: Vendor): { line1: string; line2: strin
 export function getOutwardChallanPdfBranding(
   vendor: Vendor | undefined
 ): OutwardChallanPdfBranding {
-  if (!vendor || isMagsOutwardChallanIssuer(vendor)) {
+  if (!vendor) {
     return getDefaultDeliveryChallanPdfBranding();
   }
 
-  const { line1, line2 } = splitVendorAddressForPdf(vendor);
-  const companyName = vendor.challanHeaderName?.trim() || vendor.partyName.trim();
-
-  return {
-    companyName,
-    addressLine1: line1,
-    addressLine2: line2,
-    email: vendor.challanEmail?.trim() || vendor.email?.trim() || "",
-    phone: vendor.challanPhone?.trim() || vendor.phoneNo?.trim() || "",
-    gstNo: formatGstNo(vendor.gstNo),
-    signatoryLine:
-      vendor.challanSignatoryLine?.trim() || `For, ${companyName}`,
-    logoUrl: COMPANY.logo,
-  };
+  return buildDeliveryChallanFromPdfBranding(vendor);
 }
 
 export function resolveOutwardChallanPdfBranding(
-  challan: Pick<PowderCoatingChallan, "outwardChallanVendorId">,
+  challan: Pick<PowderCoatingChallan, "outwardChallanVendorId" | "outwardChallanVendorName">,
   vendors: Vendor[]
 ): OutwardChallanPdfBranding {
   const vendor =
     findOutwardChallanIssuerById(vendors, challan.outwardChallanVendorId) ??
-    findOutwardChallanIssuerById(
-      vendors,
-      getDefaultOutwardChallanVendorId(vendors)
-    );
+    findOutwardChallanIssuerByName(vendors, challan.outwardChallanVendorName) ??
+    (challan.outwardChallanVendorId
+      ? vendors.find((entry) => entry.id === challan.outwardChallanVendorId)
+      : undefined);
+
   return getOutwardChallanPdfBranding(vendor);
 }

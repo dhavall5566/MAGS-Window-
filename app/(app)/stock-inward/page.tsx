@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ClientPageSuspense } from "@/components/shared/client-page-suspense";
 import { DataTable } from "@/components/shared/data-table";
 import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import {
@@ -61,6 +62,14 @@ const SplitStockInwardDialog = dynamic(
 );
 
 export default function StockInwardPage() {
+  return (
+    <ClientPageSuspense>
+      <StockInwardPageContent />
+    </ClientPageSuspense>
+  );
+}
+
+function StockInwardPageContent() {
   const { canCreate, canUpdate, canDelete } = useModuleCrud("stock");
   const addStockInward = useAppStore((s) => s.addStockInward);
   const upsertStockInward = useAppStore((s) => s.upsertStockInward);

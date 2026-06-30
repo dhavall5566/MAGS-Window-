@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState, useTransition, useEffect } from "react";
+import { useCallback, useMemo, useState, useTransition, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -256,7 +256,7 @@ function ChallanDetail({
   );
 }
 
-export default function ChallansPage() {
+function ChallansPageContent() {
   const replaceChallan = useAppStore((s) => s.replaceChallan);
   const deleteChallan = useAppStore((s) => s.deleteChallan);
   const { challans, profiles, vendors } = useAppStore(
@@ -692,5 +692,19 @@ export default function ChallansPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ChallansPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+          Loading…
+        </div>
+      }
+    >
+      <ChallansPageContent />
+    </Suspense>
   );
 }

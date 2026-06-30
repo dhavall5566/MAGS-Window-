@@ -38,13 +38,23 @@ function matchesVendorId(vendor: Vendor, value: string | undefined | null): bool
 }
 
 function isChallanLinkedToVendor(challan: Challan, vendor: Vendor): boolean {
-  return (
-    matchesVendorName(vendor, challan.vendorName) ||
-    matchesVendorName(vendor, challan.deliveryChallanFromVendorName) ||
-    matchesVendorName(vendor, challan.outwardChallanVendorName) ||
-    matchesVendorId(vendor, challan.deliveryChallanFromVendorId) ||
-    matchesVendorId(vendor, challan.outwardChallanVendorId)
-  );
+  if (matchesVendorName(vendor, challan.vendorName)) return true;
+
+  if (challan.type === "outward") {
+    return (
+      matchesVendorName(vendor, challan.deliveryChallanFromVendorName) ||
+      matchesVendorId(vendor, challan.deliveryChallanFromVendorId)
+    );
+  }
+
+  if (challan.type === "powder_coating") {
+    return (
+      matchesVendorName(vendor, challan.outwardChallanVendorName) ||
+      matchesVendorId(vendor, challan.outwardChallanVendorId)
+    );
+  }
+
+  return false;
 }
 
 function buildAssociation(

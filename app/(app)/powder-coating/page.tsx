@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ClientPageSuspense } from "@/components/shared/client-page-suspense";
 import { DataTable } from "@/components/shared/data-table";
 import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import {
@@ -45,6 +46,14 @@ const EditPowderCoatingDialog = dynamic(
 );
 
 export default function PowderCoatingPage() {
+  return (
+    <ClientPageSuspense>
+      <PowderCoatingPageContent />
+    </ClientPageSuspense>
+  );
+}
+
+function PowderCoatingPageContent() {
   const { canCreate, canUpdate, canDelete } = useModuleCrud("coating");
   const [apiProfiles, setApiProfiles] = useCachedOrStoreList(
     "/api/profiles",

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ClientPageSuspense } from "@/components/shared/client-page-suspense";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { useRecordDeepLink } from "@/hooks/use-record-deep-link";
 import { useDateRangeFilter } from "@/components/shared/date-range-filter";
@@ -149,6 +150,14 @@ function PurchaseOrderDetail({ order }: { order: PurchaseOrder }) {
 }
 
 export default function PurchaseOrdersPage() {
+  return (
+    <ClientPageSuspense>
+      <PurchaseOrdersPageContent />
+    </ClientPageSuspense>
+  );
+}
+
+function PurchaseOrdersPageContent() {
   const storeProfiles = useAppStore((s) => s.profiles);
   const storeOrders = useAppStore((s) => s.purchaseOrders);
   const vendors = useAppStore((s) => s.vendors);

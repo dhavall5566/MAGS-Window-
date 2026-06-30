@@ -766,7 +766,8 @@ export function ChallanFormDialog({
           ...base,
           type: "powder_coating",
           outwardChallanVendorId: coatingData.outwardChallanVendorId,
-          outwardChallanVendorName: issuer?.partyName,
+          outwardChallanVendorName:
+            issuer?.challanHeaderName?.trim() || issuer?.partyName,
           projectName: coatingData.projectName?.trim() || undefined,
           color: coatingData.color.trim() as CoatingColor,
           coatingRate: coatingManualRate,
