@@ -43,6 +43,14 @@ const VendorDeleteBlockedDialog = dynamic(
   { ssr: false }
 );
 
+const VendorDeleteConfirmDialog = dynamic(
+  () =>
+    import("@/components/vendors/vendor-delete-confirm-dialog").then(
+      (m) => m.VendorDeleteConfirmDialog
+    ),
+  { ssr: false }
+);
+
 type VendorTypeFilter = VendorType | "all";
 
 function displayValue(value: string | undefined) {
@@ -59,6 +67,8 @@ export default function VendorsPage() {
     associations: VendorAssociationGroup[];
     fallbackMessage?: string;
   } | null>(null);
+  const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
+  const [isDeletingVendor, setIsDeletingVendor] = useState(false);
 
   const storeVendors = useAppStore((s) => s.vendors);
   const vendors = storeVendors ?? [];
@@ -117,46 +127,55 @@ export default function VendorsPage() {
     setEditOpen(true);
   }, []);
 
-  const handleDelete = useCallback(
-    async (vendor: Vendor) => {
-      const state = useAppStore.getState();
-      const associations = getVendorDeleteAssociations(vendor, {
-        stockInward: state.stockInward,
-        purchaseOrders: state.purchaseOrders,
-        challans: state.challans,
-        powderCoating: state.powderCoating,
+  const handleDelete = useCallback((vendor: Vendor) => {
+    const state = useAppStore.getState();
+    const associations = getVendorDeleteAssociations(vendor, {
+      stockInward: state.stockInward,
+      purchaseOrders: state.purchaseOrders,
+      challans: state.challans,
+      powderCoating: state.powderCoating,
+    });
+    if (associations.length > 0) {
+      setDeleteBlocked({
+        vendorName: vendor.partyName,
+        associations,
       });
-      if (associations.length > 0) {
+      return;
+    }
+
+    setVendorToDelete(vendor);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!vendorToDelete) return;
+
+    setIsDeletingVendor(true);
+    const vendor = vendorToDelete;
+
+    deleteVendor(vendor.id);
+    syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
+    const result = await deleteVendorApi(vendor.id);
+    if (!result.ok) {
+      upsertVendor(vendor);
+      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
+      setVendorToDelete(null);
+      if (result.status === 409) {
         setDeleteBlocked({
           vendorName: vendor.partyName,
-          associations,
+          associations: [],
+          fallbackMessage: result.error,
         });
-        return;
+      } else {
+        alert(result.error);
       }
+      setIsDeletingVendor(false);
+      return;
+    }
 
-      if (!confirm(`Delete vendor ${vendor.partyName}?`)) return;
-
-      deleteVendor(vendor.id);
-      syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
-      const result = await deleteVendorApi(vendor.id);
-      if (!result.ok) {
-        upsertVendor(vendor);
-        syncListCache("/api/vendors", "vendors", useAppStore.getState().vendors ?? []);
-        if (result.status === 409) {
-          setDeleteBlocked({
-            vendorName: vendor.partyName,
-            associations: [],
-            fallbackMessage: result.error,
-          });
-        } else {
-          alert(result.error);
-        }
-        return;
-      }
-      showDeletedToast("Vendor");
-    },
-    [deleteVendor, upsertVendor]
-  );
+    setVendorToDelete(null);
+    setIsDeletingVendor(false);
+    showDeletedToast("Vendor");
+  }, [deleteVendor, upsertVendor, vendorToDelete]);
 
   const filteredVendors = useMemo(
     () =>
@@ -319,6 +338,15 @@ export default function VendorsPage() {
         vendorName={deleteBlocked?.vendorName ?? ""}
         associations={deleteBlocked?.associations ?? []}
         fallbackMessage={deleteBlocked?.fallbackMessage}
+      />
+      <VendorDeleteConfirmDialog
+        vendor={vendorToDelete}
+        open={vendorToDelete != null}
+        onOpenChange={(next) => {
+          if (!next && !isDeletingVendor) setVendorToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeletingVendor}
       />
     </div>
   );

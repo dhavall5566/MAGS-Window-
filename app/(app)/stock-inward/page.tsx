@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { ClientPageSuspense } from "@/components/shared/client-page-suspense";
 import { DataTable } from "@/components/shared/data-table";
@@ -70,6 +71,9 @@ export default function StockInwardPage() {
 }
 
 function StockInwardPageContent() {
+  const searchParams = useSearchParams();
+  const linkedRecordId = searchParams.get("record");
+  const linkedSearchQuery = searchParams.get("q")?.trim().toLowerCase() ?? "";
   const { canCreate, canUpdate, canDelete } = useModuleCrud("stock");
   const addStockInward = useAppStore((s) => s.addStockInward);
   const upsertStockInward = useAppStore((s) => s.upsertStockInward);
@@ -110,13 +114,21 @@ function StockInwardPageContent() {
 
   const filteredInward = useMemo(
     () =>
-      inward.filter(
-        (row) =>
+      inward.filter((row) => {
+        const isLinkedRecord =
+          row.id === linkedRecordId ||
+          (linkedSearchQuery.length > 0 &&
+            row.inwardNo?.trim().toLowerCase().includes(linkedSearchQuery));
+
+        if (isLinkedRecord) return true;
+
+        return (
           row.status !== "split" &&
           matchesCode(row.profileCode) &&
           matchesDate(row.date)
-      ),
-    [inward, matchesCode, matchesDate]
+        );
+      }),
+    [inward, linkedRecordId, linkedSearchQuery, matchesCode, matchesDate]
   );
 
   const handleClearAllFilters = useCallback(() => {
@@ -289,6 +301,11 @@ function StockInwardPageContent() {
         render: (row: StockInward) => (
           <div className="flex flex-col gap-1">
             <span>{row.inwardNo}</span>
+            {row.status === "split" && (
+              <Badge variant="outline" className="w-fit text-[10px] font-normal">
+                Split (archived)
+              </Badge>
+            )}
             {row.splitFromInwardNo && (
               <Badge variant="secondary" className="w-fit text-[10px] font-normal">
                 Split from {row.splitFromInwardNo}

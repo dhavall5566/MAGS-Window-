@@ -87,6 +87,11 @@ function collectAssociationItems<T>(
   return collected;
 }
 
+/** Split parents are archived after pieces are created — they should not block vendor delete. */
+export function isActiveStockInwardForVendorLink(entry: StockInward): boolean {
+  return entry.status !== "split";
+}
+
 export function getVendorDeleteAssociations(
   vendor: Vendor,
   data: {
@@ -104,7 +109,11 @@ export function getVendorDeleteAssociations(
   const associations: VendorAssociationGroup[] = [];
 
   const stockItems = collectAssociationItems(
-    stockInward.filter((entry) => matchesVendorName(vendor, entry.supplier)),
+    stockInward.filter(
+      (entry) =>
+        isActiveStockInwardForVendorLink(entry) &&
+        matchesVendorName(vendor, entry.supplier)
+    ),
     (entry) => ({
       id: entry.id,
       label: entry.inwardNo?.trim() || entry.id,

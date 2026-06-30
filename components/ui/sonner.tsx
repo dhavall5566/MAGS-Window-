@@ -10,18 +10,14 @@ export function Toaster(props: ToasterProps) {
     <Sonner
       theme={(resolvedTheme === "dark" ? "dark" : "light") as ToasterProps["theme"]}
       position="top-center"
-      richColors
-      visibleToasts={3}
-      expand={false}
-      gap={10}
-      offset={16}
+      visibleToasts={4}
+      expand
+      gap={12}
+      offset={{ top: 72 }}
       toastOptions={{
+        unstyled: true,
         classNames: {
-          toast: "toast-3d pointer-events-auto",
-          title: "text-sm font-semibold",
-          description: "text-xs text-muted-foreground",
-          success: "toast-3d-success",
-          error: "toast-3d-error",
+          toast: "app-toast-shell pointer-events-auto",
         },
       }}
       {...props}
