@@ -1,4 +1,4 @@
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, metersToFeet } from "@/lib/utils";
 import type { ChallanItem, PowderCoating, Profile, ProfilePriceHistory } from "@/types";
 
 const PLACEHOLDER_PROFILE_IMAGE_PHOTO_ID = "photo-1581092160562";
@@ -532,10 +532,13 @@ export function getProfileRmmValue(
   return Math.round(length * RMM_TO_METER_FACTOR * 100) / 100;
 }
 
-/** Multiplier for powder coating challan rate: (RMM / 305) × Rate × 3.28 */
+/** @deprecated Powder coating no longer uses a fixed multiplier — length (ft) is used instead. */
 export const POWDER_COATING_RATE_MULTIPLIER = 3.28;
 
-export const POWDER_COATING_RMTR_RATE_LABEL = "R MTR RATE";
+export const POWDER_COATING_FEET_RATE_LABEL = "R FEET RATE";
+
+/** @deprecated Use POWDER_COATING_FEET_RATE_LABEL */
+export const POWDER_COATING_RMTR_RATE_LABEL = POWDER_COATING_FEET_RATE_LABEL;
 
 export const POWDER_COATING_RATE_FIELD_LABEL = "Rate";
 
@@ -543,10 +546,10 @@ export const POWDER_COATING_RMM_FORMULA =
   "RMM is stored on each profile in Profile Master";
 
 export const POWDER_COATING_RATE_FORMULA =
-  "R MTR RATE = (RMM / 305) × Profile KG/MTR × 3.28";
+  "R FEET RATE = (RMM / 305) × Rate × Feet";
 
 export const POWDER_COATING_AMOUNT_FORMULA =
-  "Amount = Length × Qty × R MTR RATE";
+  "Amount = R FEET RATE × Qty";
 
 /** Manual challan Rate input, falling back to profile KG/MTR for legacy rows. */
 export function resolvePowderCoatingInputRate(
@@ -600,33 +603,36 @@ export function getProfilePowderCoatingRmm(
   return getProfilePowderCoatingRmmValue(profile);
 }
 
-/** Powder coating R MTR RATE = (RMM / 305) × Rate × 3.28 */
+/** Powder coating R FEET RATE = (RMM / 305) × Rate × Feet */
 export function calculatePowderCoatingRateFromRmmAndRate(
   rmm: number,
-  formulaRate: number
+  formulaRate: number,
+  lengthInFeet: number
 ): number {
-  if (!rmm || !formulaRate) return 0;
+  if (!rmm || !formulaRate || !lengthInFeet) return 0;
   return (
     Math.round(
-      ((rmm / RMM_TO_METER_FACTOR) * formulaRate * POWDER_COATING_RATE_MULTIPLIER) * 100
+      ((rmm / RMM_TO_METER_FACTOR) * formulaRate * lengthInFeet) * 100
     ) / 100
   );
 }
 
-/** Per-line R MTR RATE for powder coating challans. */
+/** Per-line R FEET RATE for powder coating challans. */
 export function getPowderCoatingChallanRate(
   profile: Pick<
     Profile,
     "rate" | "perKgRate" | "powderCoatingRmm" | "weightPerMeter" | "purchaseUnitQty" | "conversionUnitQty"
   >,
-  _lengthInMeter?: number,
+  lengthInMeter?: number,
   coatingRate?: number | null
 ): number {
   const formulaRate = resolvePowderCoatingInputRate(coatingRate, profile);
   if (!formulaRate) return 0;
   const rmm = getProfilePowderCoatingRmmValue(profile);
   if (!rmm) return 0;
-  return calculatePowderCoatingRateFromRmmAndRate(rmm, formulaRate);
+  const lengthInFeet = metersToFeet(lengthInMeter);
+  if (!lengthInFeet) return 0;
+  return calculatePowderCoatingRateFromRmmAndRate(rmm, formulaRate, lengthInFeet);
 }
 
 export function getPowderCoatingItemRate(
@@ -635,26 +641,29 @@ export function getPowderCoatingItemRate(
   coatingRate?: number | null
 ): number {
   if (profile) {
-    return getPowderCoatingChallanRate(profile, undefined, coatingRate);
+    return getPowderCoatingChallanRate(
+      profile,
+      Number(item.length) || 0,
+      coatingRate
+    );
   }
   if (item.rate != null && item.rate > 0) return item.rate;
   return 0;
 }
 
-/** Amount = Length (m) × Qty × R MTR RATE */
+/** Amount = R FEET RATE × Qty */
 export function calculatePowderCoatingItemAmountFromValues(
-  lengthInMeter: number,
+  _lengthInMeter: number,
   qty: number,
   rmtrRate: number
 ): number {
-  const length = Number(lengthInMeter) || 0;
   const quantity = Number(qty) || 0;
   const rate = Number(rmtrRate) || 0;
-  if (!length || !quantity || !rate) return 0;
-  return Math.round(length * quantity * rate * 100) / 100;
+  if (!quantity || !rate) return 0;
+  return Math.round(quantity * rate * 100) / 100;
 }
 
-/** Powder coating line amount = Length (m) × Qty × R MTR RATE */
+/** Powder coating line amount = R FEET RATE × Qty */
 export function calculatePowderCoatingItemAmount(
   item: Pick<ChallanItem, "length" | "qty" | "rate" | "profileCode">,
   profile?: Profile | null,

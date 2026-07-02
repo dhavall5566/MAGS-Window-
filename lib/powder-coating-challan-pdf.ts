@@ -14,7 +14,7 @@ import {
   findProfileByCode,
   getPowderCoatingItemRate,
   getProfileDesignImage,
-  POWDER_COATING_RMTR_RATE_LABEL,
+  POWDER_COATING_FEET_RATE_LABEL,
 } from "./profile";
 import { findVendorByPartyName } from "./vendor";
 import { formatGstNo, formatPdfDate, metersToFeet } from "./utils";
@@ -87,14 +87,6 @@ function getChallanDocTitle(type: Challan["type"]): string {
 function getChallanNumberMetaLabel(type: Challan["type"]): string {
   if (type === "powder_coating") return "P.C. No";
   return "O.C. No";
-}
-
-function getItemRate(
-  item: Challan["items"][number],
-  profile?: Profile | null,
-  coatingRate?: number | null
-): number {
-  return getPowderCoatingItemRate(item, profile, coatingRate);
 }
 
 function buildMetaRows(challan: Challan): ReadonlyArray<readonly [string, string]> {
@@ -533,14 +525,23 @@ export async function generateChallanDocumentPDF(
     ? (challan as PowderCoatingChallan).coatingRate
     : undefined;
 
-  const imageCache = new Map<string, string | null>();
+  const imageCache = new Map<
+    string,
+    { dataUrl: string; width: number; height: number } | null
+  >();
   await Promise.all(
     items.map(async (item) => {
       const src =
         item.profileImage?.trim() ||
         getProfileDesignImage(findProfileByCode(profiles, item.profileCode) ?? ({} as Profile));
       if (!src || imageCache.has(src)) return;
-      imageCache.set(src, await resolveImageDataUrl(src));
+      const dataUrl = await resolveImageDataUrl(src);
+      if (!dataUrl) {
+        imageCache.set(src, null);
+        return;
+      }
+      const dims = (await getImageDimensions(dataUrl)) ?? { width: 1, height: 1 };
+      imageCache.set(src, { dataUrl, width: dims.width, height: dims.height });
     })
   );
 
@@ -563,7 +564,7 @@ export async function generateChallanDocumentPDF(
           "UOM",
           "LENGTH (M)",
           "LENGTH (FT)",
-          POWDER_COATING_RMTR_RATE_LABEL.toUpperCase(),
+          POWDER_COATING_FEET_RATE_LABEL.toUpperCase(),
           "QTY",
           "AMOUNT",
         ]
@@ -574,7 +575,6 @@ export async function generateChallanDocumentPDF(
           "ITEM DESCRIPTION",
           "UOM",
           "LENGTH (M)",
-          POWDER_COATING_RMTR_RATE_LABEL.toUpperCase(),
           "QTY",
           "AMOUNT",
         ];
@@ -583,12 +583,13 @@ export async function generateChallanDocumentPDF(
     ? [14, 24, 20, 72, 14, 18, 14]
     : isPowderCoating
       ? [12, 20, 18, 30, 14, 11, 13, 13, 14, 11, 16]
-      : [12, 20, 18, 40, 12, 16, 16, 12, 18];
+      : [12, 20, 18, 44, 12, 18, 14, 18];
 
   const baseSum = baseColWidths.reduce((sum, w) => sum + w, 0);
   const scale = contentWidth / baseSum;
   const scaled = baseColWidths.map((w) => w * scale);
   scaled[scaled.length - 1] += contentWidth - scaled.reduce((sum, w) => sum + w, 0);
+  const imageColIndex = 2;
   const columnStyles: Record<number, object> = {};
   scaled.forEach((w, i) => {
     columnStyles[i] = { cellWidth: w, halign: "center" as const };
@@ -598,8 +599,10 @@ export async function generateChallanDocumentPDF(
   } else {
     columnStyles[3] = { cellWidth: scaled[3], halign: "left" as const };
   }
-
-  const imageColIndex = 2;
+  columnStyles[imageColIndex] = {
+    ...(columnStyles[imageColIndex] as object),
+    minCellHeight: 28,
+  };
 
   const body = items.map((item, index) => {
     const profile = findProfileByCode(profiles, item.profileCode);
@@ -619,7 +622,7 @@ export async function generateChallanDocumentPDF(
       ];
     }
 
-    const rate = getItemRate(item, profile, coatingFormulaRate);
+    const feetRate = getPowderCoatingItemRate(item, profile, coatingFormulaRate);
     const amount = calculatePowderCoatingItemAmount(item, profile, coatingFormulaRate);
     const lengthFeet = length > 0 ? metersToFeet(length) : 0;
     const row = [
@@ -633,7 +636,7 @@ export async function generateChallanDocumentPDF(
       "MTR",
       formatPdfDecimal(length, 2),
       lengthFeet > 0 ? formatPdfDecimal(lengthFeet, 2) : "",
-      formatPdfDecimal(rate),
+      formatPdfDecimal(feetRate),
       qty ? String(qty) : "",
       formatPdfDecimal(amount)
     );
@@ -669,6 +672,7 @@ export async function generateChallanDocumentPDF(
     head: [headLabels],
     body,
     theme: "plain",
+    rowPageBreak: "avoid",
     styles: {
       font: "helvetica",
       fontSize: 8,
@@ -676,7 +680,7 @@ export async function generateChallanDocumentPDF(
       lineColor: C.line,
       lineWidth: 0.3,
       valign: "middle",
-      minCellHeight: 30,
+      minCellHeight: 8,
       textColor: C.ink,
       overflow: "linebreak",
     },
@@ -698,19 +702,22 @@ export async function generateChallanDocumentPDF(
       const item = items[data.row.index];
       if (!item) return;
       const src = resolveItemImage(item);
-      const imageData = src ? imageCache.get(src) : null;
+      const cached = src ? imageCache.get(src) : null;
       const pad = 2;
       const boxW = data.cell.width - pad * 2;
       const boxH = data.cell.height - pad * 2;
-      if (imageData) {
+      if (cached) {
         try {
+          const fitted = fitImageBox(cached.width, cached.height, boxW, boxH);
+          const imageX = data.cell.x + pad + (boxW - fitted.width) / 2;
+          const imageY = data.cell.y + pad + (boxH - fitted.height) / 2;
           doc.addImage(
-            imageData,
-            imageFormat(imageData),
-            data.cell.x + pad,
-            data.cell.y + pad,
-            boxW,
-            boxH,
+            cached.dataUrl,
+            imageFormat(cached.dataUrl),
+            imageX,
+            imageY,
+            fitted.width,
+            fitted.height,
             undefined,
             "FAST"
           );

@@ -36,10 +36,10 @@ import {
   calculatePowderCoatingItemAmountFromValues,
   formatCurrency,
   POWDER_COATING_RATE_FIELD_LABEL,
-  POWDER_COATING_RMTR_RATE_LABEL,
+  POWDER_COATING_FEET_RATE_LABEL,
   POWDER_COATING_RMM_FORMULA,
   POWDER_COATING_RATE_FORMULA,
-  POWDER_COATING_RATE_MULTIPLIER,
+  POWDER_COATING_AMOUNT_FORMULA,
   weightFromConversionUnit,
 } from "@/lib/profile";
 import {
@@ -180,19 +180,21 @@ function mapItemsForForm(
     return {
       ...item,
       length,
-      rate: getPowderCoatingChallanRate(profile, undefined, coatingRate),
+      rate: getPowderCoatingChallanRate(profile, length, coatingRate),
     };
   });
 }
 
 function PowderCoatingRateHelp({
   profile,
-  rmtrRate,
+  feetRate,
   coatingRate,
+  lengthInFeet,
 }: {
   profile?: Profile | null;
-  rmtrRate: number;
+  feetRate: number;
   coatingRate?: number | null;
+  lengthInFeet: number;
 }) {
   const formulaRate = profile ? resolvePowderCoatingInputRate(coatingRate, profile) : 0;
 
@@ -202,17 +204,19 @@ function PowderCoatingRateHelp({
         <>
           <p>{POWDER_COATING_RMM_FORMULA}</p>
           <p className="mt-1">{POWDER_COATING_RATE_FORMULA}</p>
+          <p className="mt-1">{POWDER_COATING_AMOUNT_FORMULA}</p>
         </>
       );
     }
 
     const rmm = getProfilePowderCoatingRmmValue(profile);
 
-    if (!rmm || !formulaRate || !rmtrRate) {
+    if (!rmm || !formulaRate || !lengthInFeet || !feetRate) {
       return (
         <>
           <p>{POWDER_COATING_RMM_FORMULA}</p>
           <p className="mt-1">{POWDER_COATING_RATE_FORMULA}</p>
+          <p className="mt-1">{POWDER_COATING_AMOUNT_FORMULA}</p>
         </>
       );
     }
@@ -224,12 +228,12 @@ function PowderCoatingRateHelp({
         <p className="mt-2">{POWDER_COATING_RATE_FORMULA}</p>
         <p className="mt-1.5 text-muted-foreground">
           ({formatNumber(rmm, 2)} / 305) × {formatNumber(formulaRate, 4)} ×{" "}
-          {POWDER_COATING_RATE_MULTIPLIER} ={" "}
-          {formatNumber(rmtrRate, 2)}
+          {formatNumber(lengthInFeet, 2)} = {formatNumber(feetRate, 2)}
         </p>
+        <p className="mt-2">{POWDER_COATING_AMOUNT_FORMULA}</p>
       </>
     );
-  }, [formulaRate, profile, rmtrRate]);
+  }, [feetRate, formulaRate, lengthInFeet, profile]);
 
   return (
     <Tooltip>
@@ -237,7 +241,7 @@ function PowderCoatingRateHelp({
         <button
           type="button"
           className="inline-flex shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label={`How ${POWDER_COATING_RMTR_RATE_LABEL} is calculated`}
+          aria-label={`How ${POWDER_COATING_FEET_RATE_LABEL} is calculated`}
         >
           <CircleHelp className="h-3.5 w-3.5" />
         </button>
@@ -337,9 +341,10 @@ export function ChallanFormDialog({
       const profileCode = form.getValues(`items.${index}.profileCode`);
       const profile = findProfileByCode(profiles, profileCode);
       if (!profile) return;
+      const length = Number(form.getValues(`items.${index}.length`)) || 0;
       form.setValue(
         `items.${index}.rate`,
-        getPowderCoatingChallanRate(profile, undefined, manualRate),
+        getPowderCoatingChallanRate(profile, length, manualRate),
         { shouldValidate: true }
       );
     });
@@ -502,7 +507,7 @@ export function ChallanFormDialog({
       const manualRate = Number(form.getValues("coatingRate" as "coatingRate")) || 0;
       form.setValue(
         `items.${index}.rate`,
-        getPowderCoatingChallanRate(profile, undefined, manualRate),
+        getPowderCoatingChallanRate(profile, length, manualRate),
         { shouldValidate: true }
       );
     }
@@ -649,7 +654,7 @@ export function ChallanFormDialog({
       const manualRate = Number(form.getValues("coatingRate" as "coatingRate")) || 0;
       form.setValue(
         `items.${index}.rate`,
-        getPowderCoatingChallanRate(profile, undefined, manualRate),
+        getPowderCoatingChallanRate(profile, length, manualRate),
         { shouldValidate: true }
       );
     }
@@ -680,10 +685,11 @@ export function ChallanFormDialog({
         isPowderCoating
           ? data.items.map((item) => {
               const profile = findProfileInMap(profileByCode, item.profileCode);
+              const length = Number(item.length) || 0;
               return {
                 ...item,
                 rate: profile
-                  ? getPowderCoatingChallanRate(profile, undefined, coatingManualRate)
+                  ? getPowderCoatingChallanRate(profile, length, coatingManualRate)
                   : item.rate ?? 0,
               };
             })
@@ -1133,7 +1139,11 @@ export function ChallanFormDialog({
                 : 0;
 
               const itemRmtrRate = itemProfile
-                ? getPowderCoatingChallanRate(itemProfile, undefined, coatingRate)
+                ? getPowderCoatingChallanRate(
+                    itemProfile,
+                    Number(itemLength) || 0,
+                    coatingRate
+                  )
                 : 0;
               const itemAmount = calculatePowderCoatingItemAmountFromValues(
                 Number(itemLength) || 0,
@@ -1222,18 +1232,19 @@ export function ChallanFormDialog({
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex h-5 items-center gap-1.5">
-                        <Label className="text-xs">{POWDER_COATING_RMTR_RATE_LABEL}</Label>
+                        <Label className="text-xs">{POWDER_COATING_FEET_RATE_LABEL}</Label>
                         <PowderCoatingRateHelp
                           profile={itemProfile}
-                          rmtrRate={itemRmtrRate}
+                          feetRate={itemRmtrRate}
                           coatingRate={coatingRate}
+                          lengthInFeet={itemLengthFeet}
                         />
                       </div>
                       <Input
                         type="number"
                         step="any"
                         min="0"
-                        className="w-full min-w-0 bg-muted"
+                        className="w-full min-w-0 bg-muted tabular-nums"
                         readOnly
                         value={itemRmtrRate > 0 ? itemRmtrRate : ""}
                       />

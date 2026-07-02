@@ -33,7 +33,7 @@ import {
   formatCurrency,
   getPowderCoatingItemRate,
   getItemProfileCodes,
-  POWDER_COATING_RMTR_RATE_LABEL,
+  POWDER_COATING_FEET_RATE_LABEL,
   getUniqueCodesForSeriesFromProfileCodes,
   getUniqueSeriesFromProfileCodes,
   matchesItemsProfileCodeFilters,
@@ -111,13 +111,13 @@ function ChallanDetail({
     if (!isOutward) {
       columns.push({
         key: "rate",
-        header: POWDER_COATING_RMTR_RATE_LABEL,
+        header: POWDER_COATING_FEET_RATE_LABEL,
         align: "center",
         sortable: false,
         render: (row) =>
           formatNumber(
             getPowderCoatingItemRate(row, findProfileByCode(profiles, row.profileCode), coatingRate),
-            3
+            2
           ),
       });
     }
